@@ -1,0 +1,1260 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/*==================================================
+  NAVEGAÇÃO PARA DIAGRAMAS DETALHADOS
+==================================================*/
+
+.pca-load-box.panel-detail-link,
+.panel-detail-link-label {
+  transition: filter 160ms ease, stroke-width 160ms ease;
+}
+
+.pca-load-box.panel-detail-link:hover,
+.pca-load-box.panel-detail-link:focus {
+  filter: drop-shadow(0 0 10px rgba(0, 153, 204, 0.65));
+  stroke-width: 4px !important;
+  outline: none;
+}
+
+.pca-load-box.panel-detail-link:not(.panel-detail-available) {
+  cursor: help !important;
+}
+
+.panel-detail-button:hover rect,
+.panel-detail-button:focus rect,
+.panel-detail-breaker:hover rect,
+.panel-detail-breaker:focus rect {
+  filter: drop-shadow(0 0 10px rgba(0, 153, 204, 0.55));
+}
+
+.panel-detail-button:focus,
+.panel-detail-breaker:focus {
+  outline: none;
+}
+
+.panel-detail-overlay {
+  position: fixed;
+  inset: 46px 0 32px 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.panel-detail-overlay > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  touch-action: none;
+}
+
+:root {
+  --bg: #102030;
+  --surface: #1b2d3e;
+  --surface-2: #22384c;
+  --surface-3: #29435a;
+  --border: #4c6f8c;
+  --accent: #4fd8ff;
+  --success: #7dff9e;
+  --warning: #ffd84d;
+  --danger: #ff5a47;
+  --text: #f3f8ff;
+  --muted: #c9e2ff;
+  --left-panel-width: 220px;
+  --right-panel-width: 220px;
+  --side-panel-transition: 260ms ease;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: var(--text);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+}
+
+#scada {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* ==================================================
+   TOPO — ESCURO
+================================================== */
+
+#topbar {
+  min-height: 48px;
+  height: 48px;
+  display: grid;
+  grid-template-columns: minmax(230px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, #24394d 0%, #1a2c3d 100%);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.topbarControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.controlButton {
+  width: auto;
+  min-width: 36px;
+  height: 32px;
+  margin: 0;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#clock {
+  min-width: 90px;
+  text-align: right;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==================================================
+   ÁREA PRINCIPAL
+================================================== */
+
+#workspace {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns:
+    var(--left-panel-width)
+    minmax(0, 1fr)
+    var(--right-panel-width);
+  transition: grid-template-columns var(--side-panel-transition);
+}
+
+#workspace.leftPanelCollapsed {
+  grid-template-columns:
+    0
+    minmax(0, 1fr)
+    var(--right-panel-width);
+}
+
+#workspace.rightPanelCollapsed {
+  grid-template-columns:
+    var(--left-panel-width)
+    minmax(0, 1fr)
+    0;
+}
+
+#workspace.leftPanelCollapsed.rightPanelCollapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+/* ==================================================
+   PAINÉIS LATERAIS — ESCUROS
+================================================== */
+
+#leftPanel,
+#rightPanel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  overflow: auto;
+  background: linear-gradient(180deg, #20364a 0%, #182a39 100%);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    padding var(--side-panel-transition),
+    opacity 150ms ease,
+    border-color var(--side-panel-transition),
+    visibility 0s linear;
+}
+
+#leftPanel {
+  border-right: 1px solid var(--border);
+}
+
+#rightPanel {
+  border-left: 1px solid var(--border);
+}
+
+#workspace.leftPanelCollapsed #leftPanel,
+#workspace.rightPanelCollapsed #rightPanel {
+  padding-right: 0;
+  padding-left: 0;
+  overflow: hidden;
+  border-color: transparent;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    padding var(--side-panel-transition),
+    opacity 120ms ease,
+    border-color var(--side-panel-transition),
+    visibility 0s linear var(--side-panel-transition);
+}
+
+/* Abas que liberam a largura ocupada por OPERAÇÃO e STATUS */
+.sidePanelToggle {
+  position: absolute;
+  top: 14px;
+  z-index: 30;
+  width: 30px;
+  height: 94px;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--accent);
+  background: linear-gradient(180deg, #29465f 0%, #1c3143 100%);
+  border: 1px solid var(--border);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+  transition:
+    left var(--side-panel-transition),
+    right var(--side-panel-transition),
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.sidePanelToggle:hover {
+  background: #365874;
+  border-color: var(--accent);
+}
+
+.sidePanelToggle:active {
+  transform: none;
+}
+
+.sidePanelToggleLeft {
+  left: calc(var(--left-panel-width) - 15px);
+  border-radius: 0 7px 7px 0;
+}
+
+.sidePanelToggleRight {
+  right: calc(var(--right-panel-width) - 15px);
+  border-radius: 7px 0 0 7px;
+}
+
+#workspace.leftPanelCollapsed .sidePanelToggleLeft {
+  left: 0;
+}
+
+#workspace.rightPanelCollapsed .sidePanelToggleRight {
+  right: 0;
+}
+
+.sidePanelToggleIcon {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sidePanelToggleText {
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+#leftPanel::-webkit-scrollbar,
+#rightPanel::-webkit-scrollbar {
+  width: 8px;
+}
+
+#leftPanel::-webkit-scrollbar-thumb,
+#rightPanel::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+
+h2 {
+  margin-bottom: 14px;
+  color: var(--accent);
+  font-size: 18px;
+  letter-spacing: 0.8px;
+}
+
+h3 {
+  margin-top: 18px;
+  margin-bottom: 10px;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.panelSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(76, 111, 140, 0.75);
+  border-radius: 6px;
+}
+
+.sectionLabel {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(76, 111, 140, 0.65);
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.statusAvailable {
+  color: var(--success);
+}
+
+.statusMaintenance {
+  color: var(--warning);
+}
+
+.statusAlarm {
+  color: var(--danger);
+}
+
+/* ==================================================
+   LEGENDA DOS DISJUNTORES — AVISO COMPACTO
+================================================== */
+
+.breakerLegend {
+  margin-top: auto;
+  margin-bottom: 8px;
+  padding: 8px;
+  gap: 6px;
+  border-radius: 5px;
+}
+
+.breakerLegend .sectionLabel {
+  font-size: 9px;
+  line-height: 1.15;
+  letter-spacing: 0.45px;
+}
+
+.legendItem {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.legendText {
+  color: var(--text);
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.breakerSymbol {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #dbe8f2;
+}
+
+.breakerNormal {
+  background: #000000;
+  border-color: #000000;
+}
+
+/* Ligado — desliga-se por falta de tensão
+   Metade preta e metade branca */
+.breakerNoVoltage {
+  background: linear-gradient(
+    to top right,
+    #000000 0 49.2%,
+    #ffffff 50.8% 100%
+  );
+  border-color: #dbe8f2;
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+.breakerDiagonal {
+  position: absolute;
+  left: -4px;
+  top: 6px;
+  width: 21px;
+  height: 1px;
+  background: #ffffff;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
+/* Ligado com operação automática
+   X interno com 3 partes brancas e 1 preta */
+.breakerAutomatic {
+  border-color: #dbe8f2;
+  background:
+    linear-gradient(
+      45deg,
+      transparent 46.5%,
+      #000000 46.5%,
+      #000000 53.5%,
+      transparent 53.5%
+    ),
+    linear-gradient(
+      -45deg,
+      transparent 46.5%,
+      #000000 46.5%,
+      #000000 53.5%,
+      transparent 53.5%
+    ),
+    conic-gradient(
+      from 45deg,
+      #ffffff 0 90deg,
+      #000000 90deg 180deg,
+      #ffffff 180deg 270deg,
+      #ffffff 270deg 360deg
+    );
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+.breakerAutoLine,
+.breakerAutoLineOne,
+.breakerAutoLineTwo {
+  display: none;
+}
+
+/* ==================================================
+   DOCUMENTAÇÃO — AVISO COMPACTO
+================================================== */
+
+.documentationPanel {
+  margin-top: auto;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(76, 111, 140, 0.75);
+  border-radius: 5px;
+}
+
+.documentationTitle {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.documentationMain {
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.documentationRevision {
+  margin-top: 2px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.documentationItem {
+  margin-top: 5px;
+}
+
+.documentationItem span,
+.documentationItem strong {
+  display: block;
+}
+
+.documentationItem span {
+  margin-bottom: 1px;
+  color: var(--muted);
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.documentationItem strong {
+  color: var(--text);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+/* ==================================================
+   BOTÕES
+================================================== */
+
+button {
+  width: 100%;
+  margin: 4px 0;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 700;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+button:hover {
+  background: #365874;
+  border-color: var(--accent);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.menuButton {
+  text-align: left;
+}
+
+/* ==================================================
+   ÁREA DO DIAGRAMA — FUNDO BRANCO
+================================================== */
+
+#diagramArea {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+  isolation: isolate;
+}
+
+#diagramArea::before {
+  content: none;
+}
+
+#diagramArea::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 20px rgba(10, 25, 36, 0.06);
+}
+
+#svgDiagram {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+#svgDiagram:active {
+  cursor: grabbing;
+}
+
+#svgDiagram #grid,
+#svgDiagram .grid {
+  display: none !important;
+}
+
+/* ==================================================
+   LISTA DE EVENTOS — CENTRO INFERIOR
+================================================== */
+
+#eventLogPanel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0px;
+  z-index: 5;
+
+  width: auto;
+  height: 92px;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  background: linear-gradient(
+    180deg,
+    rgba(32, 54, 74, 0.97) 0%,
+    rgba(24, 42, 57, 0.97) 100%
+  );
+
+  border: 1px solid rgba(76, 111, 140, 0.9);
+  border-radius: 6px;
+
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+
+  transform: none;
+}
+
+.eventLogHeader {
+  flex: 0 0 24px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 0 10px;
+
+  background: rgba(255, 255, 255, 0.035);
+  border-bottom: 1px solid rgba(76, 111, 140, 0.75);
+}
+
+.eventLogTitle {
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.eventLogCounter {
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+}
+
+.eventLogList {
+  flex: 1;
+  min-height: 0;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.eventLogList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.eventLogList::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+}
+
+.eventItem {
+  min-height: 22px;
+
+  display: grid;
+  grid-template-columns: 66px 90px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+
+  padding: 3px 10px;
+
+  border-bottom: 1px solid rgba(76, 111, 140, 0.32);
+
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.eventItem:last-child {
+  border-bottom: none;
+}
+
+.eventTime {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.eventEquipment {
+  color: var(--text);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.eventDescription {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventInfo {
+  border-left: 3px solid var(--success);
+}
+
+.eventAlarm {
+  border-left: 3px solid var(--danger);
+}
+
+.eventWarning {
+  border-left: 3px solid var(--warning);
+}
+
+.eventInfo .eventDescription {
+  color: var(--success);
+}
+
+.eventAlarm .eventDescription {
+  color: var(--danger);
+}
+
+.eventWarning .eventDescription {
+  color: var(--warning);
+}
+
+/* ==================================================
+   BARRA INFERIOR
+================================================== */
+
+#statusbar {
+  min-height: 30px;
+  height: 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, #20364a 0%, #182a39 100%);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 20;
+}
+
+#systemStatus {
+  color: var(--success);
+}
+
+.statusbarScenario {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.statusbarScenario span,
+.statusbarScenario strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusbarSeparator {
+  flex: 0 0 auto;
+  color: var(--border);
+}
+
+.statusbarOnline {
+  flex: 0 0 auto;
+  color: var(--success);
+}
+
+/* ==================================================
+   SVG GERAL
+================================================== */
+
+svg text {
+  pointer-events: none;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+svg line,
+svg path,
+svg polyline {
+  shape-rendering: geometricPrecision;
+  vector-effect: non-scaling-stroke;
+}
+
+svg rect,
+svg circle {
+  shape-rendering: geometricPrecision;
+}
+
+svg .interactive {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+svg .interactive:hover .breaker-body,
+svg .interactive:focus .breaker-body {
+  filter: brightness(1.12);
+}
+
+/* ==================================================
+   LINHAS E CONTORNOS
+================================================== */
+
+#svgDiagram #wires line,
+#svgDiagram #wires path,
+#svgDiagram #wires polyline,
+#svgDiagram #topLinks line,
+#svgDiagram #topLinks path,
+#svgDiagram #topLinks polyline {
+  stroke-width: 1.45px !important;
+}
+
+#svgDiagram .electrical-wire,
+#svgDiagram .feeder-line,
+#svgDiagram .external-source-line,
+#svgDiagram .distribution-panel-line,
+#svgDiagram .generator-output,
+#svgDiagram .transformer-top-lead,
+#svgDiagram .transformer-bottom-lead,
+#svgDiagram .reactor-top-lead,
+#svgDiagram .reactor-bottom-lead,
+#svgDiagram .ground-switch-main-line {
+  stroke-width: 1.55px !important;
+}
+
+#svgDiagram .main-bus-section,
+#svgDiagram .pca-panel-bus,
+#svgDiagram .aux-panel-bus,
+#svgDiagram .external-source-bus {
+  stroke-width: 2.1px !important;
+}
+
+#svgDiagram .reactor-coil {
+  stroke-width: 2px !important;
+}
+
+#svgDiagram .transformer-primary,
+#svgDiagram .transformer-secondary,
+#svgDiagram .generator-body,
+#svgDiagram .generator-coil {
+  stroke-width: 1.8px !important;
+}
+
+#svgDiagram .breaker-body,
+#svgDiagram .breaker-opening-symbol,
+#svgDiagram .breaker-auto-symbol,
+#svgDiagram .breaker-undervoltage-symbol {
+  stroke-width: 1.25px !important;
+}
+
+#svgDiagram .main-panel-border,
+#svgDiagram .pca-panel-border,
+#svgDiagram .distribution-panel-border,
+#svgDiagram .external-source-border,
+#svgDiagram .aux-panel-border,
+#svgDiagram .se-ihm-border,
+#svgDiagram .pca-load-box {
+  stroke-width: 1.35px !important;
+}
+
+#svgDiagram .ground-switch line,
+#svgDiagram .ground-switch circle,
+#svgDiagram .distribution-switch line,
+#svgDiagram .distribution-switch circle {
+  stroke-width: 1.35px !important;
+}
+
+/* ==================================================
+   DISJUNTORES
+================================================== */
+
+#svgDiagram .breaker-body {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
+}
+
+.breaker {
+  transition: opacity 0.15s ease;
+}
+
+.breaker-body {
+  transition:
+    fill 0.15s ease,
+    stroke 0.15s ease,
+    filter 0.15s ease;
+}
+
+.breaker-hit-area {
+  cursor: pointer;
+}
+
+.breaker-label,
+.breaker-time {
+  user-select: none;
+}
+
+.breaker[data-state="tripped"] .breaker-body {
+  filter: drop-shadow(0 0 4px rgba(255, 90, 71, 0.55));
+}
+
+.breaker[data-state="interlocked"] .breaker-body {
+  filter: drop-shadow(0 0 4px rgba(255, 216, 77, 0.5));
+}
+
+/* ==================================================
+   LINHAS ELÉTRICAS
+================================================== */
+
+.electrical-wire,
+.feeder-line,
+.main-bus-section,
+.pca-panel-bus,
+.distribution-panel-line,
+.external-source-line {
+  transition:
+    stroke 0.18s ease,
+    opacity 0.18s ease,
+    filter 0.18s ease;
+}
+
+.wire-group[data-energized="true"] .electrical-wire {
+  filter: drop-shadow(0 0 1px currentColor);
+}
+
+.wire-group[data-energized="false"] {
+  opacity: 0.9;
+}
+
+/* ==================================================
+   EQUIPAMENTOS
+================================================== */
+
+.generator,
+.transformer,
+.reactor,
+.ground-switch,
+.external-source,
+.distribution-panel,
+.main-panel,
+.pca-group,
+.aux-panel {
+  transition:
+    opacity 0.18s ease,
+    filter 0.18s ease;
+}
+
+.generator[data-energized="true"] .generator-body,
+.transformer[data-energized="true"],
+.reactor[data-energized="true"] {
+  filter: drop-shadow(0 0 1px rgba(38, 50, 56, 0.12));
+}
+
+.generator[data-available="false"],
+.transformer[data-available="false"],
+.reactor[data-available="false"],
+.ground-switch[data-available="false"] {
+  opacity: 0.76;
+}
+
+/* ==================================================
+   PAINÉIS E TEXTOS
+================================================== */
+
+.main-panel-title,
+.pca-panel-title,
+.aux-panel-label,
+.distribution-panel-label {
+  user-select: none;
+}
+
+#svgDiagram .main-panel-border,
+#svgDiagram .pca-panel-border,
+#svgDiagram .aux-panel-border,
+#svgDiagram .distribution-panel-border,
+#svgDiagram .external-source-border,
+#svgDiagram .se-ihm-border,
+#svgDiagram .pca-load-box {
+  stroke: #4f5b63 !important;
+  fill: none !important;
+  stroke-width: 1.35px !important;
+}
+
+#svgDiagram .aux-panel-line,
+#svgDiagram .pca-panel-line,
+#svgDiagram .panel-line {
+  stroke: #4f5b63 !important;
+}
+
+#svgDiagram .main-panel-title,
+#svgDiagram .pca-panel-title,
+#svgDiagram .pca-load-label,
+#svgDiagram .aux-panel-label,
+#svgDiagram .distribution-panel-label,
+#svgDiagram .external-source-label,
+#svgDiagram .external-source-voltage,
+#svgDiagram .external-source-tag-inside,
+#svgDiagram .external-source-tag-bottom,
+#svgDiagram .transformer-power,
+#svgDiagram .transformer-voltage,
+#svgDiagram .generator-label,
+#svgDiagram .ground-switch-tag,
+#svgDiagram .feeder-bottom-label,
+#svgDiagram .feeder-note {
+  fill: #263238 !important;
+}
+
+#svgDiagram .breaker[data-state="open"] .breaker-body,
+#svgDiagram .breaker[data-state="openAuto"] .breaker-body,
+#svgDiagram .breaker[data-state="openAutoPreselected"] .breaker-body,
+#svgDiagram .breaker[data-state="openSemiAuto"] .breaker-body {
+  fill: #ffffff;
+}
+
+#svgDiagram .breaker[data-state="closed"] .breaker-body,
+#svgDiagram .breaker[data-state="closedAuto"] .breaker-body,
+#svgDiagram .breaker[data-state="closedUndervoltageTrip"] .breaker-body {
+  fill: #000000;
+  stroke: #000000;
+}
+
+/* ==================================================
+   RESPONSIVIDADE — TELAS INTERMEDIÁRIAS
+================================================== */
+
+@media (max-width: 1200px) {
+  :root {
+    --left-panel-width: 180px;
+    --right-panel-width: 180px;
+  }
+
+  #topbar {
+    grid-template-columns: minmax(190px, 1fr) auto auto auto;
+    gap: 10px;
+    padding: 0 10px;
+  }
+
+  #leftPanel,
+  #rightPanel {
+    padding: 10px;
+  }
+
+  h2 {
+    margin-bottom: 10px;
+    font-size: 15px;
+  }
+
+  .panelSection {
+    gap: 6px;
+    margin-bottom: 12px;
+    padding: 9px;
+  }
+
+  .sectionLabel {
+    font-size: 9px;
+  }
+
+  .statusItem {
+    gap: 6px;
+    margin-bottom: 6px;
+    padding: 7px 8px;
+    font-size: 10px;
+  }
+
+  button {
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+
+  .breakerLegend,
+  .documentationPanel {
+    margin-bottom: 5px;
+    padding: 6px;
+  }
+
+  .breakerLegend .sectionLabel,
+  .documentationTitle {
+    font-size: 8px;
+  }
+
+  .legendText {
+    font-size: 7px;
+  }
+
+  .breakerSymbol {
+    width: 12px;
+    height: 12px;
+  }
+
+  .legendItem {
+    grid-template-columns: 15px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .documentationMain {
+    font-size: 8px;
+  }
+
+  .documentationRevision,
+  .documentationItem strong {
+    font-size: 7px;
+  }
+
+  .documentationItem span {
+    font-size: 6px;
+  }
+
+  .logo {
+    font-size: 15px;
+  }
+
+  .title {
+    font-size: 13px;
+  }
+
+  #clock {
+    min-width: 78px;
+    font-size: 16px;
+  }
+
+  #statusbar {
+    gap: 10px;
+    padding: 0 10px;
+    font-size: 10px;
+  }
+
+  #eventLogPanel {
+    left: 0;
+    right: 0;
+    bottom: 8px;
+    width: auto;
+    height: 86px;
+  }
+
+  .eventItem {
+    grid-template-columns: 58px 76px minmax(0, 1fr);
+    gap: 6px;
+    padding: 3px 8px;
+    font-size: 8px;
+  }
+
+  .eventLogTitle {
+    font-size: 8px;
+  }
+
+  .eventLogCounter {
+    font-size: 6px;
+  }
+}
+
+/* ==================================================
+   RESPONSIVIDADE — TELAS PEQUENAS
+================================================== */
+
+@media (max-width: 900px) {
+  #topbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .title,
+  .topbarControls {
+    display: none;
+  }
+
+  #workspace {
+    grid-template-columns: 1fr;
+  }
+
+  #leftPanel,
+  #rightPanel,
+  .sidePanelToggle {
+    display: none;
+  }
+
+  #statusbar {
+    font-size: 9px;
+  }
+
+  .statusbarScenario {
+    gap: 4px;
+  }
+
+  #eventLogPanel {
+    display: none;
+  }
+}
+
+/* ==================================================
+   REDUÇÃO DE MOVIMENTO
+================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
