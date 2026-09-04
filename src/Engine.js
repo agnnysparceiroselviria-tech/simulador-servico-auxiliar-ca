@@ -267,17 +267,12 @@ export const Engine = {
      * Ele é separado do estado elétrico para preservar toda a
      * lógica já existente de aberto/fechado/automático/subtensão.
      */
-    window.__scadaBreakerPositions =
-      window.__scadaBreakerPositions ?? {};
+    window.__scadaBreakerPositions = window.__scadaBreakerPositions ?? {};
 
     this.breakerRackCommandHandler = (event) => {
       const detail = event?.detail ?? {};
 
-      this.setBreakerInserted(
-        detail.id,
-        detail.label,
-        detail.inserted
-      );
+      this.setBreakerInserted(detail.id, detail.label, detail.inserted);
     };
 
     window.addEventListener(
@@ -418,13 +413,9 @@ export const Engine = {
      * A UG-02 está em modernização. O DJ 103 do 1QD-2 deve permanecer
      * desligado, desenergizado e indisponível para comando.
      */
-    const modernizationPanel =
-      this.getDistributionPanel('1QD-2');
+    const modernizationPanel = this.getDistributionPanel('1QD-2');
 
-    if (
-      modernizationPanel &&
-      Scenario01.units?.UG02?.maintenance === true
-    ) {
+    if (modernizationPanel && Scenario01.units?.UG02?.maintenance === true) {
       modernizationPanel.closed = false;
       modernizationPanel.breakerState = Breaker.STATES.OPEN;
       modernizationPanel.outputEnergized = false;
@@ -451,8 +442,7 @@ export const Engine = {
   //==================================================
 
   getBreakerPositionStore() {
-    window.__scadaBreakerPositions =
-      window.__scadaBreakerPositions ?? {};
+    window.__scadaBreakerPositions = window.__scadaBreakerPositions ?? {};
 
     return window.__scadaBreakerPositions;
   },
@@ -464,17 +454,11 @@ export const Engine = {
 
     const label = String(breakerLabel ?? '').trim();
 
-    if (
-      id &&
-      typeof store[id] === 'boolean'
-    ) {
+    if (id && typeof store[id] === 'boolean') {
       return store[id];
     }
 
-    if (
-      label &&
-      typeof store[label] === 'boolean'
-    ) {
+    if (label && typeof store[label] === 'boolean') {
       return store[label];
     }
 
@@ -486,39 +470,31 @@ export const Engine = {
 
     const label = String(breakerLabel ?? '').trim();
 
-    const desiredInserted =
-      inserted !== false;
+    const desiredInserted = inserted !== false;
 
     if (!id && !label) {
       return false;
     }
 
-    const store =
-      this.getBreakerPositionStore();
+    const store = this.getBreakerPositionStore();
 
     /*
      * O Breaker.js já impede a extração com o DJ fechado.
      * Esta segunda validação protege chamadas externas.
      */
-    const matchingIncoming =
-      this.getIncomingBreaker(label || id);
+    const matchingIncoming = this.getIncomingBreaker(label || id);
 
-    const matchingCoupler =
-      this.getBusBreaker(label || id);
+    const matchingCoupler = this.getBusBreaker(label || id);
 
     const matchingDistribution =
       Scenario01.distributionPanels?.find(
         (panel) =>
-          String(panel.breaker ?? '') ===
-            String(label || id) ||
-          String(panel.id ?? '') ===
-            String(id).replace(/-breaker$/, '')
+          String(panel.breaker ?? '') === String(label || id) ||
+          String(panel.id ?? '') === String(id).replace(/-breaker$/, '')
       ) ?? null;
 
     const electricalObject =
-      matchingIncoming ??
-      matchingCoupler ??
-      matchingDistribution;
+      matchingIncoming ?? matchingCoupler ?? matchingDistribution;
 
     if (
       desiredInserted === false &&
@@ -539,8 +515,7 @@ export const Engine = {
     }
 
     if (id) {
-      store[id] =
-        desiredInserted;
+      store[id] = desiredInserted;
     }
 
     /*
@@ -549,53 +524,32 @@ export const Engine = {
      * apenas o número do DJ, conseguem respeitar a posição.
      */
     if (label) {
-      store[label] =
-        desiredInserted;
+      store[label] = desiredInserted;
     }
 
     EventLog.add(
       `DJ ${label || id}`,
-      desiredInserted
-        ? 'DISJUNTOR INSERIDO'
-        : 'DISJUNTOR EXTRAIDO',
-      desiredInserted
-        ? 'info'
-        : 'warning'
+      desiredInserted ? 'DISJUNTOR INSERIDO' : 'DISJUNTOR EXTRAIDO',
+      desiredInserted ? 'info' : 'warning'
     );
 
     this.propagateColors();
 
-    this.notifyStateChange(
-      'breaker-rack-position-changed',
-      {
-        breakerId:
-          id,
-        breakerLabel:
-          label,
-        inserted:
-          desiredInserted
-      }
-    );
+    this.notifyStateChange('breaker-rack-position-changed', {
+      breakerId: id,
+      breakerLabel: label,
+      inserted: desiredInserted,
+    });
 
     return true;
   },
 
   ensureBreakerInserted(breakerId, breakerLabel = null) {
-    if (
-      this.isBreakerInserted(
-        breakerId,
-        breakerLabel
-      )
-    ) {
+    if (this.isBreakerInserted(breakerId, breakerLabel)) {
       return true;
     }
 
-    const label =
-      String(
-        breakerLabel ??
-        breakerId ??
-        ''
-      );
+    const label = String(breakerLabel ?? breakerId ?? '');
 
     this.showOperationMessage(
       `COMANDO BLOQUEADO\nO DJ ${label} está EXTRAÍDO. Insira o disjuntor antes de ligar.`
@@ -616,8 +570,7 @@ export const Engine = {
   //==================================================
 
   resetAllBreakerPositions() {
-    const store =
-      this.getBreakerPositionStore();
+    const store = this.getBreakerPositionStore();
 
     /*
      * A ausência de uma entrada no mapa representa
@@ -782,20 +735,22 @@ export const Engine = {
      * Assim um manualTransferStates antigo nunca pode reaparecer e
      * fazer o Engine acreditar que um DJ aberto ainda está fechado.
      */
-    const normalClosedBeforeMode =
-      this.getPcaTransferDevicePhysicalClosed(load, config.normal);
+    const normalClosedBeforeMode = this.getPcaTransferDevicePhysicalClosed(
+      load,
+      config.normal
+    );
 
-    const reserveClosedBeforeMode =
-      this.getPcaTransferDevicePhysicalClosed(load, config.reserve);
+    const reserveClosedBeforeMode = this.getPcaTransferDevicePhysicalClosed(
+      load,
+      config.reserve
+    );
 
     load.operationMode = normalizedMode;
 
     if (normalizedMode === 'MANUAL') {
       load.manualTransferStates = {
-        [this.getPcaTransferDeviceKey(config.normal)]:
-          normalClosedBeforeMode,
-        [this.getPcaTransferDeviceKey(config.reserve)]:
-          reserveClosedBeforeMode,
+        [this.getPcaTransferDeviceKey(config.normal)]: normalClosedBeforeMode,
+        [this.getPcaTransferDeviceKey(config.reserve)]: reserveClosedBeforeMode,
       };
 
       this.cancelPcaTransferTimer(key);
@@ -872,13 +827,7 @@ export const Engine = {
 
     const closing = !currentlyClosed;
 
-    if (
-      closing &&
-      !this.ensureBreakerInserted(
-        id,
-        id
-      )
-    ) {
+    if (closing && !this.ensureBreakerInserted(id, id)) {
       return false;
     }
 
@@ -889,17 +838,11 @@ export const Engine = {
     if (closing) {
       const restorationRequirement = Object.values(this.restorationPlans)
         .flatMap((plan) => plan.requirements ?? [])
-        .find(
-          (requirement) =>
-            String(requirement.incomingBreakerId) === id
-        );
+        .find((requirement) => String(requirement.incomingBreakerId) === id);
 
       const couplerId = restorationRequirement?.couplerId ?? null;
 
-      if (
-        couplerId &&
-        this.isBreakerClosed(this.getBusBreaker(couplerId))
-      ) {
+      if (couplerId && this.isBreakerClosed(this.getBusBreaker(couplerId))) {
         this.showOperationMessage(
           `COMANDO BLOQUEADO\nPara ligar o DJ ${id}, desligue primeiro o DJ ${couplerId} de interligacao do ${panelId}.`
         );
@@ -978,11 +921,7 @@ export const Engine = {
 
       normalSources.forEach((normalSource, sectionIndex) => {
         if (breaker.energized) {
-          this.setBusSectionState(
-            panelId,
-            sectionIndex,
-            source
-          );
+          this.setBusSectionState(panelId, sectionIndex, source);
 
           return;
         }
@@ -994,9 +933,10 @@ export const Engine = {
          */
         const normalIncomingEntry = Object.entries(
           this.manualIncomingBreakers
-        ).find(([, incomingConfig]) =>
-          incomingConfig.panelId === panelId &&
-          incomingConfig.busIndex === sectionIndex
+        ).find(
+          ([, incomingConfig]) =>
+            incomingConfig.panelId === panelId &&
+            incomingConfig.busIndex === sectionIndex
         );
 
         const normalIncoming = normalIncomingEntry
@@ -1159,12 +1099,7 @@ export const Engine = {
       return;
     }
 
-    if (
-      !this.isBreakerInserted(
-        breakerId,
-        breakerId
-      )
-    ) {
+    if (!this.isBreakerInserted(breakerId, breakerId)) {
       EventLog.add(
         `DJ ${breakerId}`,
         'FECHAMENTO AUTOMATICO BLOQUEADO - DISJUNTOR EXTRAIDO',
@@ -1895,14 +1830,8 @@ export const Engine = {
     };
   },
 
-  togglePcaLoadNormalByPanelId(
-    panelId,
-    desiredClosed = null
-  ) {
-    const config =
-      this.getPcaLoadTransferConfigByPanelId(
-        panelId
-      );
+  togglePcaLoadNormalByPanelId(panelId, desiredClosed = null) {
+    const config = this.getPcaLoadTransferConfigByPanelId(panelId);
 
     if (!config) {
       return false;
@@ -1916,14 +1845,8 @@ export const Engine = {
     );
   },
 
-  togglePcaLoadReserveByPanelId(
-    panelId,
-    desiredClosed = null
-  ) {
-    const config =
-      this.getPcaLoadTransferConfigByPanelId(
-        panelId
-      );
+  togglePcaLoadReserveByPanelId(panelId, desiredClosed = null) {
+    const config = this.getPcaLoadTransferConfigByPanelId(panelId);
 
     if (!config) {
       return false;
@@ -2029,9 +1952,7 @@ export const Engine = {
       return switchData.closed;
     }
 
-    return Breaker.isClosedState(
-      switchData.state ?? Breaker.STATES.OPEN_AUTO
-    );
+    return Breaker.isClosedState(switchData.state ?? Breaker.STATES.OPEN_AUTO);
   },
 
   isPcaTransferDeviceClosed(load, device) {
@@ -2045,8 +1966,10 @@ export const Engine = {
      * Isso elimina o travamento em que o desenho mostrava ABERTO,
      * mas o mapa manual ainda dizia FECHADO.
      */
-    const physicalClosed =
-      this.getPcaTransferDevicePhysicalClosed(load, device);
+    const physicalClosed = this.getPcaTransferDevicePhysicalClosed(
+      load,
+      device
+    );
 
     if (device.kind === 'mid') {
       return physicalClosed;
@@ -2141,16 +2064,11 @@ export const Engine = {
      * O toggle por estado atual fica somente para chamadas antigas
      * que não informarem desiredClosed.
      */
-    const isClosed =
-      this.getPcaTransferDevicePhysicalClosed(load, device);
+    const isClosed = this.getPcaTransferDevicePhysicalClosed(load, device);
 
-    const hasExplicitCommand =
-      typeof desiredClosed === 'boolean';
+    const hasExplicitCommand = typeof desiredClosed === 'boolean';
 
-    const closing =
-      hasExplicitCommand
-        ? desiredClosed
-        : !isClosed;
+    const closing = hasExplicitCommand ? desiredClosed : !isClosed;
 
     if (!hasExplicitCommand && closing === isClosed) {
       return true;
@@ -2167,16 +2085,12 @@ export const Engine = {
      * Assim um espelho/manualTransferStates antigo não bloqueia
      * indevidamente o religamento da entrada principal.
      */
-    const oppositeClosed =
-      this.getPcaTransferDevicePhysicalClosed(
-        load,
-        oppositeDevice
-      );
+    const oppositeClosed = this.getPcaTransferDevicePhysicalClosed(
+      load,
+      oppositeDevice
+    );
 
-    if (
-      closing &&
-      oppositeClosed
-    ) {
+    if (closing && oppositeClosed) {
       this.showOperationMessage(
         `COMANDO BLOQUEADO\nDesligue o outro DJ do ${loadId} antes de ligar o DJ ${breakerLabel}, evitando o paralelismo das fontes.`
       );
@@ -2201,20 +2115,15 @@ export const Engine = {
      * Regrava explicitamente o espelho manual com o estado que acabou
      * de ser comandado. Isso mantém todas as telas lendo o mesmo valor.
      */
-    if (
-      String(load.operationMode ?? 'AUTO').toUpperCase() === 'MANUAL'
-    ) {
+    if (String(load.operationMode ?? 'AUTO').toUpperCase() === 'MANUAL') {
       load.manualTransferStates ??= {};
-      load.manualTransferStates[
-        this.getPcaTransferDeviceKey(device)
-      ] = closing;
+      load.manualTransferStates[this.getPcaTransferDeviceKey(device)] = closing;
     }
 
-    load.manualNormalOpen =
-      !this.getPcaTransferDevicePhysicalClosed(
-        load,
-        config.normal
-      );
+    load.manualNormalOpen = !this.getPcaTransferDevicePhysicalClosed(
+      load,
+      config.normal
+    );
 
     if (closing && deviceSupply?.energized === true) {
       load.energized = true;
@@ -2793,9 +2702,7 @@ export const Engine = {
       this.cancelAuxPanelTransfer(panelId);
 
       if (pcaConfig) {
-        this.cancelPcaTransferTimer(
-          `${pcaConfig.groupId}:${pcaConfig.loadId}`
-        );
+        this.cancelPcaTransferTimer(`${pcaConfig.groupId}:${pcaConfig.loadId}`);
       }
     } else {
       const feederSupplyMap = this.getFeederSupplyMap();
@@ -3089,13 +2996,7 @@ export const Engine = {
 
     const closing = !this.isPcaIncomingClosed(incoming);
 
-    if (
-      closing &&
-      !this.ensureBreakerInserted(
-        breakerLabel,
-        breakerLabel
-      )
-    ) {
+    if (closing && !this.ensureBreakerInserted(breakerLabel, breakerLabel)) {
       return false;
     }
 
@@ -3151,13 +3052,9 @@ export const Engine = {
       return;
     }
 
-    if (
-      String(load.operationMode ?? 'AUTO').toUpperCase() === 'MANUAL'
-    ) {
+    if (String(load.operationMode ?? 'AUTO').toUpperCase() === 'MANUAL') {
       load.manualTransferStates ??= {};
-      load.manualTransferStates[
-        this.getPcaTransferDeviceKey(device)
-      ] = closed;
+      load.manualTransferStates[this.getPcaTransferDeviceKey(device)] = closed;
     }
 
     const state = closed
@@ -3412,13 +3309,7 @@ export const Engine = {
 
     const currentlyClosed = this.isBreakerClosed(breaker);
 
-    if (
-      !currentlyClosed &&
-      !this.ensureBreakerInserted(
-        breakerId,
-        breakerId
-      )
-    ) {
+    if (!currentlyClosed && !this.ensureBreakerInserted(breakerId, breakerId)) {
       return false;
     }
 
@@ -3546,10 +3437,7 @@ export const Engine = {
       return false;
     }
 
-    if (
-      panelId === '1QD-2' &&
-      Scenario01.units?.UG02?.maintenance === true
-    ) {
+    if (panelId === '1QD-2' && Scenario01.units?.UG02?.maintenance === true) {
       this.showOperationMessage(
         'COMANDO BLOQUEADO\nO DJ 103 do 1QD-2 está indisponível devido à modernização da UG-02.'
       );
@@ -3585,8 +3473,7 @@ export const Engine = {
       panel.breakerState = closing
         ? Breaker.STATES.CLOSED
         : Breaker.STATES.OPEN;
-      panel.outputEnergized =
-        closing && panel.energized !== false;
+      panel.outputEnergized = closing && panel.energized !== false;
 
       EventLog.add(
         `DJ ${panel.breaker ?? panel.id}`,
@@ -3786,11 +3673,7 @@ export const Engine = {
   //==================================================
 
   applyMainPanelFeederConsequences(panelId, feederId) {
-    const feeder =
-      this.getPanelFeeder(
-        panelId,
-        feederId
-      );
+    const feeder = this.getPanelFeeder(panelId, feederId);
 
     if (!feeder) {
       return false;
@@ -3805,15 +3688,8 @@ export const Engine = {
      * Todas as cargas associadas a essas saídas devem enxergar
      * imediatamente a presença ou a falta de tensão.
      */
-    const outputNumbers = [
-      feeder.bottomLabel,
-      feeder.secondaryBottomLabel
-    ]
-      .map(
-        value =>
-          String(value ?? "")
-            .trim()
-      )
+    const outputNumbers = [feeder.bottomLabel, feeder.secondaryBottomLabel]
+      .map((value) => String(value ?? '').trim())
       .filter(Boolean);
 
     /*
@@ -3838,78 +3714,49 @@ export const Engine = {
      * deixar o comportamento claro no EventLog.
      */
     if (feeder.energized !== true) {
+      Scenario01.pcaPanels?.forEach((panel) => {
+        const topSource = String(panel.topIncoming?.sourceNumber ?? '').trim();
 
-      Scenario01.pcaPanels?.forEach(
-        panel => {
+        const bottomSource = String(
+          panel.bottomIncoming?.sourceNumber ?? ''
+        ).trim();
 
-          const topSource =
-            String(
-              panel.topIncoming?.sourceNumber ??
-              ""
-            ).trim();
-
-          const bottomSource =
-            String(
-              panel.bottomIncoming?.sourceNumber ??
-              ""
-            ).trim();
-
-          if (
-            outputNumbers.includes(topSource) ||
-            outputNumbers.includes(bottomSource)
-          ) {
-
-            EventLog.add(
-              panel.id,
-              `FONTE DO DJ ${feederId} / ${panelId} SEM TENSAO - LOGICA DE TRANSFERENCIA ATIVADA`,
-              "warning"
-            );
-          }
+        if (
+          outputNumbers.includes(topSource) ||
+          outputNumbers.includes(bottomSource)
+        ) {
+          EventLog.add(
+            panel.id,
+            `FONTE DO DJ ${feederId} / ${panelId} SEM TENSAO - LOGICA DE TRANSFERENCIA ATIVADA`,
+            'warning'
+          );
         }
-      );
+      });
 
-      Scenario01.auxPanels?.forEach(
-        panel => {
+      Scenario01.auxPanels?.forEach((panel) => {
+        const leftSource = String(panel.leftSource ?? '').trim();
 
-          const leftSource =
-            String(
-              panel.leftSource ??
-              ""
-            ).trim();
+        const rightSource = String(panel.rightSource ?? '').trim();
 
-          const rightSource =
-            String(
-              panel.rightSource ??
-              ""
-            ).trim();
-
-          if (
-            outputNumbers.includes(leftSource) ||
-            outputNumbers.includes(rightSource)
-          ) {
-
-            EventLog.add(
-              panel.label ?? panel.id,
-              `FONTE DO DJ ${feederId} / ${panelId} SEM TENSAO - LOGICA DE INTERLIGACAO ATIVADA`,
-              "warning"
-            );
-          }
+        if (
+          outputNumbers.includes(leftSource) ||
+          outputNumbers.includes(rightSource)
+        ) {
+          EventLog.add(
+            panel.label ?? panel.id,
+            `FONTE DO DJ ${feederId} / ${panelId} SEM TENSAO - LOGICA DE INTERLIGACAO ATIVADA`,
+            'warning'
+          );
         }
-      );
+      });
     }
 
-    this.notifyStateChange(
-      "main-panel-feeder-downstream-updated",
-      {
-        panelId,
-        feederId:
-          String(feederId),
-        outputs:
-          outputNumbers,
-        energized:
-          feeder.energized === true
-      }
-    );
+    this.notifyStateChange('main-panel-feeder-downstream-updated', {
+      panelId,
+      feederId: String(feederId),
+      outputs: outputNumbers,
+      energized: feeder.energized === true,
+    });
 
     return true;
   },
@@ -3941,18 +3788,12 @@ export const Engine = {
     const currentlyClosed = this.isBreakerClosed(feeder);
     const closing = !currentlyClosed;
 
-    if (
-      closing &&
-      !this.ensureBreakerInserted(
-        feederId,
-        feederId
-      )
-    ) {
+    if (closing && !this.ensureBreakerInserted(feederId, feederId)) {
       return false;
     }
 
-    const busIndex = (this.panelFeeders?.[panelId] ?? []).findIndex(
-      (ids) => ids.map(String).includes(String(feederId))
+    const busIndex = (this.panelFeeders?.[panelId] ?? []).findIndex((ids) =>
+      ids.map(String).includes(String(feederId))
     );
 
     const busSection = panel.busSections?.[busIndex] ?? null;
@@ -3962,9 +3803,7 @@ export const Engine = {
     feeder.state = closing ? Breaker.STATES.CLOSED : Breaker.STATES.OPEN;
     feeder.breakerState = feeder.state;
     feeder.energized = energized;
-    feeder.color = energized
-      ? busSection.color
-      : this.deenergizedColor;
+    feeder.color = energized ? busSection.color : this.deenergizedColor;
     feeder.suppliedBy = energized ? busSection.suppliedBy ?? null : null;
 
     EventLog.add(
@@ -3982,10 +3821,7 @@ export const Engine = {
      * Se existir transferência automática, o próprio Engine utiliza
      * os tempos já definidos para cada conjunto.
      */
-    this.applyMainPanelFeederConsequences(
-      panelId,
-      feederId
-    );
+    this.applyMainPanelFeederConsequences(panelId, feederId);
 
     this.notifyStateChange('main-panel-feeder-command', {
       panelId,
@@ -3996,7 +3832,6 @@ export const Engine = {
 
     return true;
   },
-
 
   /*
    * DJs dos Grupos Auxiliares de Emergência / geradores auxiliares
@@ -4009,6 +3844,9 @@ export const Engine = {
    */
   /*
    * DJs associados aos GAEs.
+   *
+   * GAE provisório:
+   *   52-1, 21103
    *
    * GAE COG:
    *   52-G, 52-2A, 52-2B
@@ -4027,6 +3865,13 @@ export const Engine = {
     }
 
     const gaeBreakerIds = new Set([
+      // GAE provisório - CF-pCA-P14
+      // 52-1 = DJ junto ao gerador
+      // 21103 = acoplamento do GAE provisório ao CCM-U01
+      '52-1',
+      '21103',
+
+      // GAE COG
       '52-G',
       '52-2A',
       '52-2B',
@@ -4083,10 +3928,7 @@ export const Engine = {
     for (const panel of Scenario01.auxPanels ?? []) {
       const generator = panel?.generator;
 
-      if (
-        generator &&
-        String(generator.breaker ?? '').trim() === targetId
-      ) {
+      if (generator && String(generator.breaker ?? '').trim() === targetId) {
         return {
           kind: 'aux-generator',
           panel,
@@ -4121,45 +3963,34 @@ export const Engine = {
       }
 
       return Breaker.isClosedState(
-        match.target.state ??
-        Breaker.STATES.OPEN_AUTO
+        match.target.state ?? Breaker.STATES.OPEN_AUTO
       );
     }
 
-    if (
-      match.kind === 'pca-generator' ||
-      match.kind === 'aux-generator'
-    ) {
+    if (match.kind === 'pca-generator' || match.kind === 'aux-generator') {
       return Breaker.isClosedState(
         match.target.breakerState ??
-        match.target.state ??
-        Breaker.STATES.OPEN_AUTO
+          match.target.state ??
+          Breaker.STATES.OPEN_AUTO
       );
     }
 
     return Breaker.isClosedState(
-      match.target.state ??
-      Breaker.STATES.OPEN_AUTO
+      match.target.state ?? Breaker.STATES.OPEN_AUTO
     );
   },
 
-  toggleGaeBreaker(
-    breakerId,
-    desiredClosed = null
-  ) {
+  toggleGaeBreaker(breakerId, desiredClosed = null) {
     const match = this.getGaeBreaker(breakerId);
 
     if (!match) {
       return false;
     }
 
-    const currentlyClosed =
-      this.isGaeBreakerClosed(breakerId);
+    const currentlyClosed = this.isGaeBreakerClosed(breakerId);
 
     const closing =
-      typeof desiredClosed === 'boolean'
-        ? desiredClosed
-        : !currentlyClosed;
+      typeof desiredClosed === 'boolean' ? desiredClosed : !currentlyClosed;
 
     if (closing === currentlyClosed) {
       return true;
@@ -4167,47 +3998,39 @@ export const Engine = {
 
     if (match.kind === 'pca-switch') {
       match.target.closed = closing;
-      match.target.state =
-        closing
-          ? Breaker.STATES.CLOSED
-          : Breaker.STATES.OPEN_AUTO;
+      match.target.state = closing
+        ? Breaker.STATES.CLOSED
+        : Breaker.STATES.OPEN_AUTO;
     } else if (
       match.kind === 'pca-generator' ||
       match.kind === 'aux-generator'
     ) {
-      match.target.breakerState =
-        closing
-          ? Breaker.STATES.CLOSED
-          : Breaker.STATES.OPEN_AUTO;
+      match.target.breakerState = closing
+        ? Breaker.STATES.CLOSED
+        : Breaker.STATES.OPEN_AUTO;
 
       match.target.closed = closing;
       match.target.energized = closing;
     } else {
-      match.target.state =
-        closing
-          ? Breaker.STATES.CLOSED
-          : Breaker.STATES.OPEN_AUTO;
+      match.target.state = closing
+        ? Breaker.STATES.CLOSED
+        : Breaker.STATES.OPEN_AUTO;
 
       match.target.closed = closing;
     }
 
     EventLog.add(
       `DJ ${breakerId}`,
-      closing
-        ? 'LIGADO PELO OPERADOR'
-        : 'DESLIGADO PELO OPERADOR',
+      closing ? 'LIGADO PELO OPERADOR' : 'DESLIGADO PELO OPERADOR',
       closing ? 'info' : 'warning'
     );
 
-    this.notifyStateChange(
-      'gae-breaker-command',
-      {
-        breakerId: String(breakerId),
-        closed: closing,
-        panelId: match.panel?.id ?? null,
-        loadId: match.load?.id ?? null,
-      }
-    );
+    this.notifyStateChange('gae-breaker-command', {
+      breakerId: String(breakerId),
+      closed: closing,
+      panelId: match.panel?.id ?? null,
+      loadId: match.load?.id ?? null,
+    });
 
     return true;
   },
@@ -4215,14 +4038,8 @@ export const Engine = {
   /*
    * Compatibilidade com a primeira versão da lógica dos GAEs.
    */
-  toggleAuxGeneratorBreaker(
-    breakerId,
-    desiredClosed = null
-  ) {
-    return this.toggleGaeBreaker(
-      breakerId,
-      desiredClosed
-    );
+  toggleAuxGeneratorBreaker(breakerId, desiredClosed = null) {
+    return this.toggleGaeBreaker(breakerId, desiredClosed);
   },
 
   toggleGenerator(unitId) {

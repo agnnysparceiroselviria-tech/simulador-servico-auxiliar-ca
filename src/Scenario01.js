@@ -17,7 +17,7 @@ export const Scenario01 = {
 
     //==================================================
     // ESTADO DAS UNIDADES
-    // REV.22 = FONTE DA UG-02 INDISPONÃƒÂVEL
+    // REV.22 = FONTE DA UG-02 INDISPONÃVEL
     //==================================================
 
     units: {
@@ -129,7 +129,7 @@ export const Scenario01 = {
     ],
 
     //==================================================
-    // SAÃƒÂDAS DAS UGs PARA OS TRs ELEVADORES / SE 440 kV
+    // SAÃDAS DAS UGs PARA OS TRs ELEVADORES / SE 440 kV
     //==================================================
 
     stepUpBranches: [
@@ -283,8 +283,8 @@ export const Scenario01 = {
     ],
 
     //==================================================
-    // PAINÃƒâ€°IS DE DISTRIBUIÃƒâ€¡ÃƒÆ’O pCA - PARTE INFERIOR
-    // NOVO PADRÃƒÆ’O EM GRUPOS P/R
+    // PAINÃ‰IS DE DISTRIBUIÃ‡ÃƒO pCA - PARTE INFERIOR
+    // NOVO PADRÃƒO EM GRUPOS P/R
     //==================================================
 
     pcaPanels: [
@@ -365,9 +365,12 @@ export const Scenario01 = {
                             labelOrientation: "vertical"
                         },
                         {
+                            // DJ de acoplamento do GAE provisório ao CCM-U01.
+                            // Comandável em Liga / Desliga pelo Engine.
                             label: "21103",
                             x: 1715,
                             state: "open",
+                            closed: false,
                             labelOrientation: "vertical",
                             connectToBox: true
                         }
@@ -463,11 +466,7 @@ export const Scenario01 = {
                 {
                     id: "CG-QGE-01",
                     label: "CG-QGE-01",
-
-                    // Quadro centralizado entre os DJs 52-1A e 52-2A
-                    x: 2830,
-                    boxWidth: 230,
-
+                    x: 2800,
                     boxColor: "#3f7cff",
 
                     topBreaker: "52-5",
@@ -483,7 +482,7 @@ export const Scenario01 = {
                         },
                         {
                             label: "52-2A",
-                            x: 2925,
+                            x: 2865,
                             time: "10s",
                             labelPosition: "right",
                             timePosition: "belowLabel",
@@ -514,7 +513,15 @@ export const Scenario01 = {
                     y: 3070,
                     color: "#263238",
                     radius: 42,
-                    breaker: "",
+
+                    // DJ do GAE provisório
+                    // ID lógico usado pelo Engine para Liga / Desliga.
+                    breaker: "52-1",
+
+                    // Mantém o desenho como estava: sem repetir a tag ao lado
+                    // do pequeno DJ abaixo do GD PROV.
+                    breakerLabel: "",
+
                     showBreaker: true,
                     breakerX: 1830,
                     breakerY: 3140
@@ -553,7 +560,7 @@ export const Scenario01 = {
                     color: "#263238",
                     width: 1.55,
                     points: [
-                        { x: 2925, y: 3155 },
+                        { x: 2865, y: 3155 },
                         { x: 3245, y: 3155 }
                     ]
                 },
@@ -571,8 +578,8 @@ export const Scenario01 = {
                     color: "#263238",
                     width: 1.55,
                     points: [
-                        { x: 2925, y: 3155 },
-                        { x: 2925, y: 3166 }
+                        { x: 2865, y: 3155 },
+                        { x: 2865, y: 3166 }
                     ]
                 },
                 {
@@ -600,7 +607,7 @@ export const Scenario01 = {
             y: 2950,
 
             /*
-             * Moldura e barramentos reduzidos, preservando as posiÃƒÂ§ÃƒÂµes de:
+             * Moldura e barramentos reduzidos, preservando as posiÃ§Ãµes de:
              * CG-QGE-02, CM-5, CM-6, CCM-U07 e CM-8.
              */
             width: 1400,
@@ -670,8 +677,8 @@ export const Scenario01 = {
                             time: "10s",
 
                             /*
-                             * Tag principal Ãƒ  esquerda, tempo logo abaixo
-                             * e linha de ligaÃƒÂ§ÃƒÂ£o atÃƒÂ© o CG-QGE-02.
+                             * Tag principal Ã  esquerda, tempo logo abaixo
+                             * e linha de ligaÃ§Ã£o atÃ© o CG-QGE-02.
                              */
                             labelPosition: "left",
                             timePosition: "belowLabel",
@@ -1116,7 +1123,7 @@ export const Scenario01 = {
             id: "P1316_R1316",
             type: "pcaGroup",
 
-            // VÃƒÂ£o de 350 apÃƒÂ³s o P0912 para liberar a saÃƒÂ­da do DJ reserva.
+            // VÃ£o de 350 apÃ³s o P0912 para liberar a saÃ­da do DJ reserva.
             x: 6300,
             y: 2950,
             width: 1100,
@@ -1320,7 +1327,7 @@ export const Scenario01 = {
             id: "P1720_R1720",
             type: "pcaGroup",
 
-            // VÃƒÂ£o de 350 apÃƒÂ³s o P1316 para liberar a saÃƒÂ­da do DJ reserva.
+            // VÃ£o de 350 apÃ³s o P1316 para liberar a saÃ­da do DJ reserva.
             x: 7750,
             y: 2950,
             width: 1100,
@@ -1518,7 +1525,7 @@ export const Scenario01 = {
 
     ],
     //==================================================
-    // PAINÃƒâ€°IS AUXILIARES - 7qS, CMCS, qA, 8qV
+    // PAINÃ‰IS AUXILIARES - 7qS, CMCS, qA, 8qV
     //==================================================
 
     auxPanels: [
@@ -1534,7 +1541,9 @@ export const Scenario01 = {
 
     // Acima do 5qA
     // y menor = sobe / afasta do 5qA
-    x: 80,
+    // Reaproximado do conjunto dos demais quadros.
+    // Mantém uma folga antes do CF-pCA-P14.
+    x: 800,
     y: 2750,
 
     leftSource: "17",
@@ -1575,7 +1584,8 @@ export const Scenario01 = {
             type: "fiveQa",
             label: "5qA",
 
-            x: 80,
+            // Reaproximado do conjunto dos demais quadros.
+            x: 800,
             y: 3450,
 
             leftSource: "31",
@@ -1924,7 +1934,7 @@ export const Scenario01 = {
     ],
 
     //==================================================
-    // PAINÃƒâ€°IS / QDs SUPERIORES
+    // PAINÃ‰IS / QDs SUPERIORES
     //==================================================
 
     distributionPanels: [
@@ -2022,9 +2032,9 @@ export const Scenario01 = {
             y: 1450,
             color: "#3f7cff",
             power: "7,5 MVA",
-            voltage: "14,4/14,4 ± 16% kV"
+            voltage: "14,4/14,4Â±16% kV"
         },
-        
+
         {
             id: "TRSE1",
             label: "TR-SA-3",
@@ -2032,9 +2042,9 @@ export const Scenario01 = {
             y: 1430,
             color: "#7a858d",
             power: "7,5 MVA",
-            voltage: "13,8/14,4 ± 16% kV"
+            voltage: "13,8/14,4Â±16% kV"
         },
-        
+
         {
             id: "TR02",
             label: "TR-SA-2",
@@ -2042,9 +2052,9 @@ export const Scenario01 = {
             y: 1450,
             color: "#e4c24a",
             power: "7,5 MVA",
-            voltage: "14,4/14,4 ± 16% kV"
+            voltage: "14,4/14,4Â±16% kV"
         },
-        
+
         {
             id: "TR11",
             label: "TR-SA-4",
@@ -2052,9 +2062,9 @@ export const Scenario01 = {
             y: 1450,
             color: "#ff44dd",
             power: "7,5 MVA",
-            voltage: "14,4/14,4 ± 16% kV"
+            voltage: "14,4/14,4Â±16% kV"
         },
-        
+
         {
             id: "TRSE3",
             label: "TR-SA-6",
@@ -2062,9 +2072,9 @@ export const Scenario01 = {
             y: 1430,
             color: "#7a858d",
             power: "7,5 MVA",
-            voltage: "13,8/14,4 ± 16% kV"
+            voltage:"13,8/14,4Â±16% kV"
         },
-        
+
         {
             id: "TR12",
             label: "TR-SA-5",
@@ -2072,8 +2082,9 @@ export const Scenario01 = {
             y: 1450,
             color: "#44dd55",
             power: "7,5 MVA",
-            voltage: "14,4/14,4 ± 16% kV"
+            voltage: "14,4/14,4Â±16% kV"
         }
+
     ],
 
     //==================================================
@@ -2141,71 +2152,63 @@ export const Scenario01 = {
         {
             id: "107",
             x: 990,
-            y: 1840,
-            color: "#3f7cff",
-            fontSize: 30
+            y: 1820,
+            color: "#3f7cff"
         },
     
         {
             id: "108",
             x: 2050,
-            y: 1840,
-            color: "#ff44dd",
-            fontSize: 30
+            y: 1820,
+            color: "#ff44dd"
         },
     
         {
             id: "109",
             x: 3170,
-            y: 1840,
-            color: "#8a8a8a",
-            fontSize: 30
+            y: 1820,
+            color: "#8a8a8a"
         },
     
         {
             id: "110",
             x: 4440,
-            y: 1840,
-            color: "#ff44dd",
-            fontSize: 30
+            y: 1820,
+            color: "#ff44dd"
         },
     
         {
             id: "111",
             x: 5200,
-            y: 1840,
-            color: "#3f7cff",
-            fontSize: 30
+            y: 1820,
+            color: "#3f7cff"
         },
     
         {
             id: "112",
             x: 6380,
-            y: 1840,
-            color: "#44dd55",
-            fontSize: 30
+            y: 1820,
+            color: "#44dd55"
         },
     
         {
             id: "120",
             x: 2480,
-            y: 1840,
-            color: "#7a858d",
-            fontSize: 30
+            y: 1820,
+            color: "#7a858d"
         },
     
         {
             id: "135",
             x: 5520,
-            y: 1840,
-            color: "#7a858d",
-            fontSize: 30
+            y: 1820,
+            color: "#7a858d"
         }
     
     ],
 
     //==================================================
-    // PAneis PRINCIPAIS 1QP / 3QP
+    // PAINÃ‰IS PRINCIPAIS 1QP / 3QP
     //==================================================
 
     panels: [
@@ -2220,13 +2223,12 @@ export const Scenario01 = {
 
             /*
              * Barra 1 reduzida para 1000 px, com os DJs 113 a 117
-             * distribuÃƒÂ­dos uniformemente.
+             * distribuÃ­dos uniformemente.
              * A Barra 2 possui 1000 px e ultrapassa o DJ 120 em x = 2480.
              * Os DJs 118, 119, 121 e 122 permanecem compactados.
              */
             width: 3140,
-            // SaÃ­das inferiores compactadas para reduzir as setas dos DJs.
-            height: 400,
+            height: 520,
 
             color: "#3f7cff",
 
@@ -2270,7 +2272,7 @@ export const Scenario01 = {
 
             feeders: [
 
-                // Barra I Ã¢â‚¬â€ azul
+                // Barra I â€” azul
                 { id: "113", x: 720,  bottomLabel: "1",  color: "#3f7cff" },
                 { id: "114", x: 900,  bottomLabel: "3",  color: "#3f7cff" },
                 { id: "115", x: 1080, bottomLabel: "5",  color: "#3f7cff" },
@@ -2281,17 +2283,17 @@ export const Scenario01 = {
                     bottomLabel: "9",
                     secondaryBottomLabel: "31",
                     secondaryOffset: 120,
-                    branchY: 2140,
+                    branchY: 2230,
                     color: "#3f7cff"
                 },
 
-                // Barra II Ã¢â‚¬â€ magenta
+                // Barra II â€” magenta
                 { id: "118", x: 1710, bottomLabel: "11", color: "#ff44dd" },
                 { id: "119", x: 1940, bottomLabel: "13", color: "#ff44dd" },
                 { id: "121", x: 2170, bottomLabel: "17", color: "#ff44dd" },
                 { id: "122", x: 2400, bottomLabel: "19", color: "#ff44dd" },
 
-                // Barra III Ã¢â‚¬â€ verde
+                // Barra III â€” verde
                 { id: "123", x: 2720, bottomLabel: "21", color: "#44dd55" },
                 { id: "124", x: 2900, bottomLabel: "23", color: "#44dd55" },
                 { id: "125", x: 3080, bottomLabel: "25", color: "#44dd55" },
@@ -2301,7 +2303,7 @@ export const Scenario01 = {
                     bottomLabel: "27",
                     secondaryBottomLabel: "33",
                     secondaryOffset: 120,
-                    branchY: 2140,
+                    branchY: 2230,
                     color: "#44dd55"
                 },
                 { id: "127", x: 3440, bottomLabel: "", color: "#44dd55" }
@@ -2315,20 +2317,19 @@ export const Scenario01 = {
             type: "main",
             label: "3QP",
 
-            // VÃ£o de 150 unidades apÃ³s o tÃ©rmino do 1QP.
+            // Vão de 150 unidades após o término do 1QP.
             x: 3790,
             y: 1870,
 
             /*
              * Barra 1 reduzida para 900 px, com os DJs 128 a 132
-             * distribuÃƒÂ­dos uniformemente.
+             * distribuÃ­dos uniformemente.
              * Barra 2 reduzida para 900 px, com o DJ 134 reserva aberto.
              * Barra 3 reduzida para 900 px, com os DJs 138 a 142
-             * distribuÃƒÂ­dos uniformemente.
+             * distribuÃ­dos uniformemente.
              */
             width: 2940,
-            // SaÃ­das inferiores compactadas para reduzir as setas dos DJs.
-            height: 400,
+            height: 520,
 
             color: "#44dd55",
 
@@ -2372,20 +2373,20 @@ export const Scenario01 = {
 
             feeders: [
 
-                // Barra I Ã¢â‚¬â€ magenta
+                // Barra I â€” magenta
                 { id: "128", x: 4010, bottomLabel: "2",  color: "#ff44dd" },
                 { id: "129", x: 4180, bottomLabel: "4",  color: "#ff44dd" },
                 { id: "130", x: 4350, bottomLabel: "6",  color: "#ff44dd" },
                 { id: "131", x: 4520, bottomLabel: "8",  color: "#ff44dd" },
                 { id: "132", x: 4690, bottomLabel: "10", color: "#ff44dd" },
 
-                // Barra II Ã¢â‚¬â€ azul
+                // Barra II â€” azul
                 { id: "133", x: 4960, bottomLabel: "12", color: "#3f7cff" },
                 { id: "134", x: 5120, bottomLabel: "", note: "RESERVA", state: "open", breakerState: "open", color: "#3f7cff" },
                 { id: "136", x: 5400, bottomLabel: "18", color: "#3f7cff" },
                 { id: "137", x: 5630, bottomLabel: "20", color: "#3f7cff" },
 
-                // Barra III Ã¢â‚¬â€ verde
+                // Barra III â€” verde
                 { id: "138", x: 5810, bottomLabel: "22", color: "#44dd55" },
                 { id: "139", x: 5970, bottomLabel: "24", color: "#44dd55" },
                 { id: "140", x: 6130, bottomLabel: "26", color: "#44dd55" },
@@ -2401,213 +2402,20 @@ export const Scenario01 = {
 };
 
 //==================================================
-// COMPACTAÃ‡ÃƒO HORIZONTAL DOS GRUPOS PCA
-//==================================================
-
-/*
- * Reduz a largura total ocupada pelos cinco PCAs sem perder o
- * alinhamento interno de entradas, DJs, cargas e interligaÃ§Ãµes.
- * O eixo aprovado em x = 5200 permanece fixo.
- */
-const PCA_LAYOUT_CENTER_X = 5200;
-const PCA_LAYOUT_SCALE_X = 0.82;
-const PCA_LAYOUT_OFFSET_Y = -250;
-
-const compressPcaCoordinateX = (value, key = "") => {
-
-    if (!value || typeof value !== "object") {
-        return;
-    }
-
-    Object.entries(value).forEach(([childKey, childValue]) => {
-
-        const isHorizontalCoordinate =
-            childKey === "x" ||
-            childKey.endsWith("X");
-
-        if (
-            isHorizontalCoordinate &&
-            Number.isFinite(childValue)
-        ) {
-            value[childKey] = Math.round(
-                PCA_LAYOUT_CENTER_X +
-                (
-                    childValue -
-                    PCA_LAYOUT_CENTER_X
-                ) *
-                PCA_LAYOUT_SCALE_X
-            );
-
-            return;
-        }
-
-        if (childValue && typeof childValue === "object") {
-            compressPcaCoordinateX(childValue, childKey);
-        }
-    });
-};
-
-const shiftPcaCoordinateY = value => {
-
-    if (!value || typeof value !== "object") {
-        return;
-    }
-
-    Object.entries(value).forEach(([childKey, childValue]) => {
-
-        const isVerticalCoordinate =
-            childKey === "y" ||
-            childKey.endsWith("Y");
-
-        /*
-         * Valores pequenos, como timeBelowLabelY: 24, sÃ£o offsets
-         * locais e nÃ£o devem acompanhar o deslocamento do painel.
-         */
-        if (
-            isVerticalCoordinate &&
-            Number.isFinite(childValue) &&
-            childValue > 1000
-        ) {
-            value[childKey] =
-                childValue +
-                PCA_LAYOUT_OFFSET_Y;
-
-            return;
-        }
-
-        if (childValue && typeof childValue === "object") {
-            shiftPcaCoordinateY(childValue);
-        }
-    });
-};
-
-Scenario01.pcaPanels?.forEach(panel => {
-
-    compressPcaCoordinateX(panel);
-    shiftPcaCoordinateY(panel);
-
-    if (Number.isFinite(panel.width)) {
-        panel.width = Math.round(
-            panel.width *
-            PCA_LAYOUT_SCALE_X
-        );
-    }
-});
-
-//==================================================
-// APROXIMAÃ‡ÃƒO DOS QUADROS IHM-SE / 5QA-7QS1
-//==================================================
-
-const SPECIAL_AUX_OFFSET_X = 1670;
-
-const specialAuxPanelIds = new Set([
-    "AUX_IHM_SE",
-    "AUX_5QA"
-]);
-
-const shiftSpecialAuxCoordinateX = value => {
-
-    if (!value || typeof value !== "object") {
-        return;
-    }
-
-    Object.entries(value).forEach(([childKey, childValue]) => {
-
-        if (
-            (childKey === "x" || childKey.endsWith("X")) &&
-            Number.isFinite(childValue)
-        ) {
-            value[childKey] =
-                childValue +
-                SPECIAL_AUX_OFFSET_X;
-
-            return;
-        }
-
-        if (childValue && typeof childValue === "object") {
-            shiftSpecialAuxCoordinateX(childValue);
-        }
-    });
-};
-
-Scenario01.auxPanels
-    ?.filter(panel => specialAuxPanelIds.has(panel.id))
-    .forEach(shiftSpecialAuxCoordinateX);
-
-//==================================================
-// ALINHAMENTO DOS QUADROS AUXILIARES INFERIORES
-//==================================================
-
-const BOTTOM_AUX_OFFSET_X = 825;
-const BOTTOM_AUX_OFFSET_Y = -500;
-
-const bottomAuxPanelIds = new Set([
-    "AUX_7QS1",
-    "AUX_7QS2",
-    "AUX_CMCS",
-    "AUX_1QA",
-    "AUX_2QA",
-    "AUX_3QA",
-    "AUX_4QA",
-    "AUX_8QV"
-]);
-
-const shiftBottomAuxCoordinates = value => {
-
-    if (!value || typeof value !== "object") {
-        return;
-    }
-
-    Object.entries(value).forEach(([childKey, childValue]) => {
-
-        if (
-            (childKey === "x" || childKey.endsWith("X")) &&
-            Number.isFinite(childValue) &&
-            childValue > 1000
-        ) {
-            value[childKey] =
-                childValue +
-                BOTTOM_AUX_OFFSET_X;
-
-            return;
-        }
-
-        if (
-            (childKey === "y" || childKey.endsWith("Y")) &&
-            Number.isFinite(childValue) &&
-            childValue > 1000
-        ) {
-            value[childKey] =
-                childValue +
-                BOTTOM_AUX_OFFSET_Y;
-
-            return;
-        }
-
-        if (childValue && typeof childValue === "object") {
-            shiftBottomAuxCoordinates(childValue);
-        }
-    });
-};
-
-Scenario01.auxPanels
-    ?.filter(panel => bottomAuxPanelIds.has(panel.id))
-    .forEach(shiftBottomAuxCoordinates);
-
-//==================================================
 // ALINHAMENTO DO CONJUNTO 1QP / 3QP COM OS PCAs
 //==================================================
 
 /*
- * MantÃ©m as coordenadas internas aprovadas e aplica um Ãºnico
+ * Mantém as coordenadas internas aprovadas e aplica um único
  * deslocamento horizontal ao diagrama principal completo.
  *
  * Centro original de 1QP + 3QP: 3615
  * Centro da faixa dos grupos PCA: 5200
- * Deslocamento visual final: +1585
- * (alinhamento geomÃ©trico exato com o centro dos PCAs.)
+ * Deslocamento visual final: +1285
+ * (300 unidades à esquerda do alinhamento geométrico dos PCAs,
+ * compensando o painel lateral direito da interface.)
  */
-const MAIN_DIAGRAM_OFFSET_X = 1585;
+const MAIN_DIAGRAM_OFFSET_X = 1285;
 
 const shiftItemX = item => {
     if (item && Number.isFinite(item.x)) {

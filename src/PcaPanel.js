@@ -7,6 +7,9 @@ import { AuxPanelDetailView } from "./AuxPanelDetailView.js";
 
 export class PcaPanel extends Equipment {
 
+    // DJ 21103 do CCM-U01 é comandado pela lógica genérica de GAE
+    // quando Engine.getGaeBreaker('21103') o reconhece.
+
     static COLORS = {
         text: "#263238",
         border: "#3f4b53",
@@ -2716,6 +2719,7 @@ export class PcaPanel extends Equipment {
                     y: breakerY,
 
                     label:
+                        data.breakerLabel ??
                         data.breaker ??
                         "",
 
