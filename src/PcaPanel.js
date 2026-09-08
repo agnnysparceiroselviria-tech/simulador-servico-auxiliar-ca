@@ -266,10 +266,40 @@ export class PcaPanel extends Equipment {
         }
 
         //==================================================
+        // INTERLIGAÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ES
+        //==================================================
+
+        data.interlinks?.forEach(link => {
+            this.drawInterlink(group, link);
+        });
+
+        //==================================================
         // CARGAS
         //==================================================
 
         data.loads?.forEach(load => {
+
+            const loadTopEnergized =
+                topEnergized &&
+                (
+                    !(load.topBreaker || load.topFeeder) ||
+                    Engine.isPcaMainBreakerClosed?.(
+                        id,
+                        load.id,
+                        "top"
+                    ) !== false
+                );
+
+            const loadBottomEnergized =
+                bottomEnergized &&
+                (
+                    !(load.bottomBreaker || load.bottomFeeder) ||
+                    Engine.isPcaMainBreakerClosed?.(
+                        id,
+                        load.id,
+                        "bottom"
+                    ) !== false
+                );
 
             this.drawLoad(group, {
                 ...load,
@@ -287,14 +317,21 @@ export class PcaPanel extends Equipment {
                 topColor,
                 bottomColor,
 
-                topEnergized,
-                bottomEnergized,
+                topEnergized:
+                    loadTopEnergized,
+
+                bottomEnergized:
+                    loadBottomEnergized,
 
                 topSuppliedBy:
-                    topSupply?.suppliedBy ?? null,
+                    loadTopEnergized
+                        ? topSupply?.suppliedBy ?? null
+                        : null,
 
                 bottomSuppliedBy:
-                    bottomSupply?.suppliedBy ?? null,
+                    loadBottomEnergized
+                        ? bottomSupply?.suppliedBy ?? null
+                        : null,
 
                 defaultColor:
                     load.color ??
@@ -319,14 +356,6 @@ export class PcaPanel extends Equipment {
                 });
             }
         );
-
-        //==================================================
-        // INTERLIGAÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ES
-        //==================================================
-
-        data.interlinks?.forEach(link => {
-            this.drawInterlink(group, link);
-        });
 
         //==================================================
         // RESERVA
@@ -1261,18 +1290,25 @@ export class PcaPanel extends Equipment {
                     : false;
 
         const resolvedSupplySide =
-            normalDeviceClosed &&
-            sideIsEnergized(
-                transferConfig?.normalSide
-            )
-                ? transferConfig.normalSide
-                : reserveDeviceClosed &&
-                    sideIsEnergized(reserveSide)
-                    ? reserveSide
-                    : null;
+            transferConfig
+                ? (
+                    normalDeviceClosed &&
+                    sideIsEnergized(
+                        transferConfig?.normalSide
+                    )
+                        ? transferConfig.normalSide
+                        : reserveDeviceClosed &&
+                            sideIsEnergized(reserveSide)
+                            ? reserveSide
+                            : null
+                )
+                : topEnergized === true
+                    ? "top"
+                    : bottomEnergized === true
+                        ? "bottom"
+                        : null;
 
         const loadEnergized =
-            isCmOrCcm &&
             loadAvailable &&
             resolvedSupplySide !== null;
 
@@ -1313,13 +1349,18 @@ export class PcaPanel extends Equipment {
          * Nos demais painÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©is, o posicionamento anterior
          * permanece preservado.
          */
+        /*
+         * DJs de saída do barramento P:
+         * ficam sempre abaixo e fora da moldura do PCA.
+         *
+         * Antes, com panelHeight acima de 80, o cálculo usava
+         * topBusY + 42 e deixava o DJ praticamente dentro da moldura.
+         *
+         * Agora a referência é sempre a borda inferior do painel P.
+         */
         const topBreakerY =
             load.topBreakerY ??
-            (
-                panelHeight <= 80
-                    ? topPanelBottomY + 28
-                    : topBusY + 42
-            );
+            (topPanelBottomY + 28);
 
             const loadBoxY =
             load.boxY ??
@@ -1383,6 +1424,11 @@ export class PcaPanel extends Equipment {
             loadGroup,
             {
                 id:
+                    Engine.getPcaMainBreakerId?.(
+                        groupId,
+                        id,
+                        "top"
+                    ) ??
                     `${groupId}-${id}-top`,
 
                 x:
@@ -1393,6 +1439,11 @@ export class PcaPanel extends Equipment {
 
                 label:
                     load.topBreaker,
+
+                commandLabel:
+                    load.topBreaker ??
+                    load.topFeeder ??
+                    "",
 
                 color: topColor,
 
@@ -1408,7 +1459,21 @@ export class PcaPanel extends Equipment {
                     loadAvailable,
 
                 energized:
-                    topEnergized
+                    topEnergized,
+
+                interactive:
+                    Boolean(load.topBreaker || load.topFeeder),
+
+                onCommand:
+                    (load.topBreaker || load.topFeeder)
+                        ? command =>
+                            Engine.togglePcaMainBreaker?.(
+                                groupId,
+                                id,
+                                "top",
+                                command?.nextClosed
+                            )
+                        : null
             }
         );
 
@@ -1710,21 +1775,26 @@ export class PcaPanel extends Equipment {
                      * diagrama detalhado.
                      */
                     symbolType:
-                        midInteractive
-                            ? ""
-                            : load.midBreakerClosed === true
+                        (
+                            ["52-E1", "216"].includes(midBreakerLabel) &&
+                            !Breaker.isClosedState(resolvedMidState)
+                        )
+                            ? "closedAutoQuadrant"
+                            : midInteractive
                                 ? ""
-                                : load.midBreakerClosed === false
-                                    ? load.midBreakerSymbolType ??
-                                        "closedAutoQuadrant"
-                                : isMidClosedAuto && topEnergized
+                                : load.midBreakerClosed === true
                                     ? ""
-                                    : load.midBreakerSymbolType ??
-                                        (
-                                            isMidClosedAuto
-                                                ? ""
-                                                : "closedAutoQuadrant"
-                                        ),
+                                    : load.midBreakerClosed === false
+                                        ? load.midBreakerSymbolType ??
+                                            "closedAutoQuadrant"
+                                    : isMidClosedAuto && topEnergized
+                                        ? ""
+                                        : load.midBreakerSymbolType ??
+                                            (
+                                                isMidClosedAuto
+                                                    ? ""
+                                                    : "closedAutoQuadrant"
+                                            ),
 
                     energized:
                         isMidClosedAuto && topEnergized
@@ -1782,6 +1852,7 @@ export class PcaPanel extends Equipment {
                     [
                         "52-1B",
                         "52-1A",
+                        "52-E1",
                         "21101",
                         "216",
                         "218",
@@ -1865,6 +1936,33 @@ export class PcaPanel extends Equipment {
                     ) === true ||
                     upperIsGaeBreaker;
 
+                /*
+                 * DJ 21103 - GAE PROV -> CCM-U01:
+                 * quando aberto em operação automática com pré-seleção,
+                 * utiliza o símbolo de quadrado com uma única diagonal.
+                 */
+                const isOpenAutoPreselected =
+                    switchLabel === "21103" &&
+                    resolvedUpperState === Breaker.STATES.OPEN_AUTO;
+
+                const useAutoMainOpenSymbol =
+                    [
+                        "52-1A",
+                        "52-1B",
+                        "52-E1",
+                        "21101",
+                        "216",
+                        "21901",
+                        "222",
+                        "22301",
+                        "228",
+                        "236",
+                        "240",
+                        "244"
+                    ].includes(
+                        switchLabel
+                    );
+
                 this.drawSwitchBox(
                     loadGroup,
                     {
@@ -1902,26 +2000,31 @@ export class PcaPanel extends Equipment {
                          * mesmo mecanismo de clique fora do diagrama detalhado.
                          */
                         symbolType:
-                            upperInteractive
-                                ? ""
-                                : isOpenAuto &&
-                                  switchData.closed !== true
+                            isOpenAutoPreselected
+                                ? "openAutoPreselected"
+                                : useAutoMainOpenSymbol &&
+                                  !Breaker.isClosedState(resolvedUpperState)
+                                    ? "closedAutoQuadrant"
+                                : upperInteractive
                                     ? ""
-                                    : switchData.closed === true
-                                    ? ""
-                                    : switchData.closed === false
-                                        ? switchData.symbolType ??
-                                            "closedAutoQuadrant"
-                                    : isClosedAuto && topEnergized
+                                    : isOpenAuto &&
+                                      switchData.closed !== true
                                         ? ""
-                                        : switchData.symbolType ??
-                                            (
-                                                isClosedAuto
+                                        : switchData.closed === true
+                                            ? ""
+                                            : switchData.closed === false
+                                                ? switchData.symbolType ??
+                                                    "closedAutoQuadrant"
+                                                : isClosedAuto && topEnergized
                                                     ? ""
-                                                    : isOpenAuto
-                                                        ? "closedAutoQuadrant"
-                                                        : ""
-                                            ),
+                                                    : switchData.symbolType ??
+                                                        (
+                                                            isClosedAuto
+                                                                ? ""
+                                                                : isOpenAuto
+                                                                    ? "closedAutoQuadrant"
+                                                                    : ""
+                                                        ),
 
                         energized:
                             isClosedAuto && topEnergized
@@ -1980,6 +2083,7 @@ export class PcaPanel extends Equipment {
                             24
                     }
                 );
+
 
                 if (switchData.connectToBox) {
 
@@ -2142,6 +2246,21 @@ export class PcaPanel extends Equipment {
                     ) === true ||
                     lowerIsGaeBreaker;
 
+                const useAutoMainOpenSymbol =
+                    [
+                        "21402",
+                        "218",
+                        "222",
+                        "226",
+                        "230",
+                        "234",
+                        "238",
+                        "242",
+                        "23002"
+                    ].includes(
+                        switchLabel
+                    );
+
                 this.drawSwitchBox(
                     loadGroup,
                     {
@@ -2177,9 +2296,12 @@ export class PcaPanel extends Equipment {
                          * caminho padrão do Breaker.draw.
                          */
                         symbolType:
-                            lowerInteractive
-                                ? ""
-                                : isOpenAuto &&
+                            useAutoMainOpenSymbol &&
+                            !Breaker.isClosedState(resolvedLowerState)
+                                ? "closedAutoQuadrant"
+                                : lowerInteractive
+                                    ? ""
+                                    : isOpenAuto &&
                                   switchData.closed !== true
                                     ? ""
                                     : switchData.closed === true
@@ -2381,6 +2503,11 @@ export class PcaPanel extends Equipment {
                 loadGroup,
                 {
                     id:
+                        Engine.getPcaMainBreakerId?.(
+                            groupId,
+                            id,
+                            "bottom"
+                        ) ??
                         `${groupId}-${id}-bottom`,
 
                     x: bottomBreakerX,
@@ -2388,6 +2515,11 @@ export class PcaPanel extends Equipment {
 
                     label:
                         load.bottomBreaker,
+
+                    commandLabel:
+                        load.bottomBreaker ??
+                        load.bottomFeeder ??
+                        "",
 
                     color:
                         bottomColor,
@@ -2404,7 +2536,21 @@ export class PcaPanel extends Equipment {
                         loadAvailable,
 
                     energized:
-                        bottomEnergized
+                        bottomEnergized,
+
+                    interactive:
+                        Boolean(load.bottomBreaker || load.bottomFeeder),
+
+                    onCommand:
+                        (load.bottomBreaker || load.bottomFeeder)
+                            ? command =>
+                                Engine.togglePcaMainBreaker?.(
+                                    groupId,
+                                    id,
+                                    "bottom",
+                                    command?.nextClosed
+                                )
+                            : null
                 }
             );
 
@@ -2778,6 +2924,235 @@ export class PcaPanel extends Equipment {
             );
         }
 
+        /*
+         * Controles rápidos dos GAEs.
+         *
+         * São dois botões posicionados ao lado direito do GAE,
+         * no mesmo padrão visual do botão LIGA/DES de referência:
+         * um pequeno botão quadrado e a legenda ao lado.
+         *
+         * 1) LIGA/DES
+         *    - um clique alterna o estado do DJ do GAE.
+         *
+         * 2) MAN/AUT
+         *    - um clique alterna entre MANUAL e AUTOMÁTICO.
+         *
+         * O modo fica salvo no próprio objeto do Scenario para ser
+         * preservado quando o diagrama for redesenhado.
+         */
+        if (data.breaker && data.showGaeControls !== false) {
+
+            data.operationMode =
+                String(data.operationMode ?? "AUTOMATICO").toUpperCase();
+
+            if (data.operationMode === "AUTO") {
+                data.operationMode = "AUTOMATICO";
+            }
+
+            const controls = this.group(
+                `pca-generator-${id}-controls`,
+                "pca-gae-controls"
+            );
+
+            const controlButtonX =
+                data.controlsX ??
+                (x - radius - 100);
+
+            const firstButtonY =
+                data.controlsY ??
+                (y - 14);
+
+            const rowGap = 34;
+            const iconSize = 26;
+            const labelGap = 14;
+
+            const applyButtonVisual = (
+                iconBody,
+                iconText,
+                visual = {}
+            ) => {
+                iconBody.setAttribute(
+                    "fill",
+                    visual.fill ?? "#ffffff"
+                );
+
+                iconBody.setAttribute(
+                    "stroke",
+                    visual.stroke ?? this.COLORS.border
+                );
+
+                iconText.setAttribute(
+                    "fill",
+                    visual.textColor ?? this.COLORS.text
+                );
+
+                iconText.textContent =
+                    visual.symbol ?? "";
+            };
+
+            const makeSideButton = (
+                by,
+                label,
+                getVisual,
+                onClick,
+                className = "pca-gae-control-button"
+            ) => {
+
+                const button = this.group(
+                    "",
+                    className
+                );
+
+                const iconBody = this.rect(
+                    controlButtonX - iconSize / 2,
+                    by - iconSize / 2,
+                    iconSize,
+                    iconSize,
+                    "#ffffff",
+                    this.COLORS.border,
+                    1.4,
+                    {
+                        className:
+                            `${className}-icon`
+                    }
+                );
+
+                iconBody.setAttribute("rx", 3);
+                iconBody.setAttribute("ry", 3);
+                iconBody.style.cursor = "pointer";
+
+                const iconText = this.text(
+                    controlButtonX,
+                    by + 5,
+                    "",
+                    15,
+                    this.COLORS.text,
+                    {
+                        anchor: "middle",
+                        weight: "700",
+                        className:
+                            `${className}-icon-text`
+                    }
+                );
+
+                iconText.setAttribute(
+                    "pointer-events",
+                    "none"
+                );
+
+                const labelText = this.text(
+                    controlButtonX + iconSize / 2 + labelGap,
+                    by + 5,
+                    label,
+                    14,
+                    this.COLORS.text,
+                    {
+                        anchor: "start",
+                        weight: "700",
+                        className:
+                            `${className}-label`
+                    }
+                );
+
+                labelText.setAttribute(
+                    "pointer-events",
+                    "none"
+                );
+
+                applyButtonVisual(
+                    iconBody,
+                    iconText,
+                    getVisual?.()
+                );
+
+                button.appendChild(iconBody);
+                button.appendChild(iconText);
+                button.appendChild(labelText);
+                button.style.cursor = "pointer";
+
+                button.addEventListener(
+                    "click",
+                    event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        onClick?.();
+
+                        applyButtonVisual(
+                            iconBody,
+                            iconText,
+                            getVisual?.()
+                        );
+                    }
+                );
+
+                controls.appendChild(button);
+
+                return button;
+            };
+
+            const getBreakerClosed = () =>
+                Engine.isGaeBreakerClosed?.(
+                    data.breaker
+                ) === true;
+
+            makeSideButton(
+                firstButtonY,
+                "LIGA/DES",
+                () =>
+                    getBreakerClosed()
+                        ? {
+                            symbol: "I",
+                            fill: "#1f9d45",
+                            stroke: "#1f9d45",
+                            textColor: "#ffffff"
+                        }
+                        : {
+                            symbol: "O",
+                            fill: "#ffffff",
+                            stroke: "#7a858d",
+                            textColor: this.COLORS.text
+                        },
+                () => {
+                    const currentlyClosed =
+                        getBreakerClosed();
+
+                    Engine.toggleGaeBreaker?.(
+                        data.breaker,
+                        !currentlyClosed
+                    );
+                }
+            );
+
+            makeSideButton(
+                firstButtonY + rowGap,
+                "MAN/AUT",
+                () =>
+                    data.operationMode === "MANUAL"
+                        ? {
+                            symbol: "M",
+                            fill: "#d4a900",
+                            stroke: "#d4a900",
+                            textColor: "#ffffff"
+                        }
+                        : {
+                            symbol: "A",
+                            fill: "#1f9d45",
+                            stroke: "#1f9d45",
+                            textColor: "#ffffff"
+                        },
+                () => {
+                    data.operationMode =
+                        data.operationMode === "MANUAL"
+                            ? "AUTOMATICO"
+                            : "MANUAL";
+                },
+                "pca-gae-mode-button"
+            );
+
+            generator.appendChild(controls);
+        }
+
         group.appendChild(generator);
 
         return generator;
@@ -3008,10 +3383,13 @@ export class PcaPanel extends Equipment {
             x = 0,
             y = 0,
             label = "",
+            commandLabel = label,
             color = "#3f4b53",
             state = Breaker.STATES.CLOSED,
             available = true,
-            energized = true
+            energized = true,
+            interactive = false,
+            onCommand = null
         }
     ) {
 
@@ -3022,7 +3400,7 @@ export class PcaPanel extends Equipment {
 
         Breaker.draw(group, {
             id,
-            label,
+            label: commandLabel,
 
             x,
             y,
@@ -3051,7 +3429,9 @@ export class PcaPanel extends Equipment {
             labelPosition:
                 "right",
 
-            interactive: false
+            interactive,
+
+            onCommand
         });
     }
 
@@ -3092,6 +3472,186 @@ export class PcaPanel extends Equipment {
             onCommand = null
         }
     ) {
+
+        /*
+         * DJ DESLIGADO COM OPERAÇÃO AUTOMÁTICA E PRÉ-SELEÇÃO.
+         * Símbolo: quadrado branco com uma única diagonal (\),
+         * conforme padrão utilizado para o DJ 21103 do GAE PROV.
+         */
+        if (symbolType === "openAutoPreselected") {
+
+            const half = size / 2;
+            const left = x - half;
+            const right = x + half;
+            const top = y - half;
+            const bottom = y + half;
+
+            // Máscara branca para a linha permanecer atrás do DJ.
+            group.appendChild(
+                this.rect(
+                    left - 2,
+                    top - 2,
+                    size + 4,
+                    size + 4,
+                    "#ffffff",
+                    "none",
+                    0,
+                    {
+                        className:
+                            "pca-switchbox-line-mask"
+                    }
+                )
+            );
+
+            // Corpo do disjuntor.
+            group.appendChild(
+                this.rect(
+                    left,
+                    top,
+                    size,
+                    size,
+                    "#ffffff",
+                    this.COLORS.border,
+                    1.6,
+                    {
+                        className:
+                            "pca-switchbox open-auto-preselected"
+                    }
+                )
+            );
+
+            // Única diagonal: superior esquerda -> inferior direita.
+            group.appendChild(
+                this.line(
+                    left + 2,
+                    top + 2,
+                    right - 2,
+                    bottom - 2,
+                    this.COLORS.border,
+                    1.6
+                )
+            );
+
+            if (label) {
+                const labelX =
+                    labelPosition === "left"
+                        ? left - labelOffset
+                        : right + labelOffset;
+
+                group.appendChild(
+                    this.text(
+                        labelX,
+                        y + 7,
+                        label,
+                        30,
+                        labelColor,
+                        {
+                            anchor:
+                                labelPosition === "left"
+                                    ? "end"
+                                    : "start",
+                            weight: "600",
+                            className:
+                                "pca-switchbox-label"
+                        }
+                    )
+                );
+            }
+
+            if (time) {
+                const isBelowLabel =
+                    timePosition === "belowLabel";
+
+                const timeX =
+                    isBelowLabel
+                        ? (
+                            labelPosition === "left"
+                                ? left - labelOffset
+                                : right + labelOffset
+                        )
+                        : (
+                            timePosition === "left"
+                                ? left - timeOffset
+                                : right + timeOffset
+                        );
+
+                const timeY =
+                    isBelowLabel
+                        ? y + timeBelowLabelY
+                        : y + 7;
+
+                group.appendChild(
+                    this.text(
+                        timeX,
+                        timeY,
+                        time,
+                        22,
+                        timeColor,
+                        {
+                            anchor:
+                                isBelowLabel
+                                    ? (
+                                        labelPosition === "left"
+                                            ? "end"
+                                            : "start"
+                                    )
+                                    : (
+                                        timePosition === "left"
+                                            ? "end"
+                                            : "start"
+                                    ),
+                            weight: "600",
+                            className:
+                                "pca-switchbox-time"
+                        }
+                    )
+                );
+            }
+
+            if (
+                interactive &&
+                typeof onCommand === "function"
+            ) {
+                const hitArea = this.rect(
+                    left - 8,
+                    top - 8,
+                    size + 16,
+                    size + 16,
+                    "transparent",
+                    "transparent",
+                    0,
+                    {
+                        className:
+                            "pca-switchbox-hit-area"
+                    }
+                );
+
+                hitArea.setAttribute(
+                    "pointer-events",
+                    "all"
+                );
+                hitArea.style.cursor = "pointer";
+
+                hitArea.addEventListener(
+                    "click",
+                    event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onCommand({
+                            id,
+                            label,
+                            state: Breaker.STATES.OPEN_AUTO,
+                            closed: false,
+                            nextClosed: true
+                        });
+                    }
+                );
+
+                group.appendChild(hitArea);
+            }
+
+            return;
+        }
 
         /*
          * SÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­mbolo especÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­fico do DJ ligado com operaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o automÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡tica:

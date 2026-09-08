@@ -27,13 +27,13 @@ export class Navigation {
          * 1.00 preserva o viewBox calculado e garante que todos os
          * equipamentos permaneÃ§am visÃ­veis ao pressionar AJUSTAR.
          */
-        this.fitScale = 1.00;
+        this.fitScale = 0.70;
 
         /*
          * Desloca o enquadramento para cima apÃ³s o zoom do AJUSTAR,
          * eliminando a margem branca excessiva acima das UGs.
          */
-        this.fitTopShiftRatio = 0;
+        this.fitTopShiftRatio = 0.08;
 
         /*
          * O SVG jÃ¡ ocupa somente a Ã¡rea Ãºtil entre os painÃ©is laterais

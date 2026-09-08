@@ -493,8 +493,15 @@ export const Engine = {
           String(panel.id ?? '') === String(id).replace(/-breaker$/, '')
       ) ?? null;
 
+    const matchingPcaMain = this.getPcaMainBreakerRuntimeState?.(
+      this.parsePcaMainBreakerId(label || id) ?? this.parsePcaMainBreakerId(id)
+    );
+
     const electricalObject =
-      matchingIncoming ?? matchingCoupler ?? matchingDistribution;
+      matchingIncoming ??
+      matchingCoupler ??
+      matchingDistribution ??
+      matchingPcaMain;
 
     if (
       desiredInserted === false &&
@@ -523,7 +530,9 @@ export const Engine = {
      * Assim as rotinas do Engine, que normalmente conhecem
      * apenas o número do DJ, conseguem respeitar a posição.
      */
-    if (label) {
+    const shouldStoreByLabel = label && !String(id).startsWith('pca-main:');
+
+    if (shouldStoreByLabel) {
       store[label] = desiredInserted;
     }
 
@@ -2890,6 +2899,163 @@ export const Engine = {
     );
   },
 
+  normalizePcaMainBreakerSide(side) {
+    return String(side).toLowerCase() === 'bottom' ? 'bottom' : 'top';
+  },
+
+  getPcaMainBreakerId(groupId, loadId, side) {
+    const normalizedSide = this.normalizePcaMainBreakerSide(side);
+
+    return `pca-main:${groupId}:${loadId}:${normalizedSide}`;
+  },
+
+  parsePcaMainBreakerId(value) {
+    const raw = String(value ?? '').trim();
+
+    if (!raw.startsWith('pca-main:')) {
+      return null;
+    }
+
+    const [, groupId = '', loadId = '', side = 'top'] = raw.split(':');
+
+    if (!groupId || !loadId) {
+      return null;
+    }
+
+    return {
+      groupId,
+      loadId,
+      side: this.normalizePcaMainBreakerSide(side),
+    };
+  },
+
+  getPcaMainBreakerRuntimeState(parsed) {
+    if (!parsed) {
+      return null;
+    }
+
+    const load = this.getPcaLoad(parsed.groupId, parsed.loadId);
+
+    if (!load) {
+      return null;
+    }
+
+    const side = this.normalizePcaMainBreakerSide(parsed.side);
+    const stateKey = `${side}BreakerState`;
+    const closedKey = `${side}BreakerClosed`;
+
+    return {
+      state: load[stateKey],
+      closed: typeof load[closedKey] === 'boolean' ? load[closedKey] : null,
+    };
+  },
+
+  isPcaMainBreakerClosed(groupId, loadId, side) {
+    const load = this.getPcaLoad(groupId, loadId);
+
+    if (!load) {
+      return false;
+    }
+
+    const normalizedSide = this.normalizePcaMainBreakerSide(side);
+    const closedKey = `${normalizedSide}BreakerClosed`;
+    const stateKey = `${normalizedSide}BreakerState`;
+
+    if (typeof load[closedKey] === 'boolean') {
+      return load[closedKey];
+    }
+
+    if (load[stateKey]) {
+      return Breaker.isClosedState(load[stateKey]);
+    }
+
+    return load.available !== false;
+  },
+
+  setPcaMainBreakerClosed(groupId, loadId, side, closed) {
+    const load = this.getPcaLoad(groupId, loadId);
+
+    if (!load) {
+      return false;
+    }
+
+    const normalizedSide = this.normalizePcaMainBreakerSide(side);
+    const closedKey = `${normalizedSide}BreakerClosed`;
+    const stateKey = `${normalizedSide}BreakerState`;
+
+    load[closedKey] = closed === true;
+    load[stateKey] =
+      closed === true ? Breaker.STATES.CLOSED : Breaker.STATES.OPEN;
+
+    return true;
+  },
+
+  togglePcaMainBreaker(groupId, loadId, side, desiredClosed = null) {
+    const load = this.getPcaLoad(groupId, loadId);
+
+    if (!load) {
+      return false;
+    }
+
+    const normalizedSide = this.normalizePcaMainBreakerSide(side);
+    const breakerLabel =
+      load[`${normalizedSide}Breaker`] ??
+      load[`${normalizedSide}Feeder`] ??
+      'DJ';
+
+    if (!breakerLabel) {
+      return false;
+    }
+
+    const breakerId = this.getPcaMainBreakerId(groupId, loadId, normalizedSide);
+
+    const currentClosed = this.isPcaMainBreakerClosed(
+      groupId,
+      loadId,
+      normalizedSide
+    );
+
+    const hasExplicitCommand = typeof desiredClosed === 'boolean';
+    const closing = hasExplicitCommand ? desiredClosed : !currentClosed;
+
+    if (!hasExplicitCommand && closing === currentClosed) {
+      return true;
+    }
+
+    if (closing && !this.ensureBreakerInserted(breakerId, breakerLabel)) {
+      return false;
+    }
+
+    this.setPcaMainBreakerClosed(groupId, loadId, normalizedSide, closing);
+
+    EventLog.add(
+      `${loadId}`,
+      `DJ ${breakerLabel} ${closing ? 'LIGADO' : 'DESLIGADO'} PELO OPERADOR`,
+      closing ? 'info' : 'warning'
+    );
+
+    this.notifyStateChange('pca-main-breaker-command', {
+      groupId,
+      loadId,
+      side: normalizedSide,
+      breaker: breakerLabel,
+      closed: closing,
+    });
+
+    const feederSupplyMap = this.getFeederSupplyMap();
+
+    /*
+     * Atualiza imediatamente o CM/CCM alimentado por este DJ do PCA.
+     * AUTO   -> abre por falta de tensão e arma a transferência temporizada.
+     * MANUAL -> abre por falta de tensão, mas não fecha a reserva sozinho.
+     */
+    this.updatePcaLoadTransfers(feederSupplyMap, `${groupId}:${loadId}`);
+
+    this.propagateColors();
+
+    return true;
+  },
+
   getPcaSideSupply(groupId, side, feederSupplyMap) {
     const group = Scenario01.pcaPanels?.find(
       (panel) => String(panel.id) === String(groupId)
@@ -2927,6 +3093,54 @@ export const Engine = {
       color: energized ? sourceSupply.color : this.deenergizedColor,
       sourceColor: sourceSupply.color,
       suppliedBy: energized ? sourceSupply.suppliedBy : null,
+    };
+  },
+
+  getPcaLoadSideSupply(groupId, loadId, side, feederSupplyMap) {
+    const normalizedSide = this.normalizePcaMainBreakerSide(side);
+
+    const sideSupply = this.getPcaSideSupply(
+      groupId,
+      normalizedSide,
+      feederSupplyMap
+    );
+
+    if (!sideSupply) {
+      return null;
+    }
+
+    const load = this.getPcaLoad(groupId, loadId);
+
+    if (!load) {
+      return {
+        ...sideSupply,
+        energized: false,
+        mainBreakerClosed: false,
+      };
+    }
+
+    const breakerLabel =
+      load[`${normalizedSide}Breaker`] ??
+      load[`${normalizedSide}Feeder`] ??
+      null;
+
+    /*
+     * Nos PCAs 0912 / 1316 / 1720 os DJs de saída são identificados
+     * por topFeeder / bottomFeeder (20511, 20711, 20911 etc.).
+     * Eles também precisam participar da lógica de falta de tensão.
+     */
+    const mainBreakerClosed = breakerLabel
+      ? this.isPcaMainBreakerClosed(groupId, loadId, normalizedSide)
+      : true;
+
+    const energized = sideSupply.energized === true && mainBreakerClosed;
+
+    return {
+      ...sideSupply,
+      energized,
+      mainBreakerClosed,
+      color: energized ? sideSupply.color : this.deenergizedColor,
+      suppliedBy: energized ? sideSupply.suppliedBy : null,
     };
   },
 
@@ -2971,8 +3185,6 @@ export const Engine = {
       return false;
     }
 
-    const operationMode = String(group.operationMode ?? 'AUTO').toUpperCase();
-
     const panelLabel =
       normalizedSide === 'bottom'
         ? group.bottomPanel?.label ?? group.id
@@ -2980,20 +3192,13 @@ export const Engine = {
 
     const breakerLabel = incoming.breaker ?? 'ENTRADA';
 
-    if (operationMode !== 'MANUAL') {
-      this.showOperationMessage(
-        `COMANDO BLOQUEADO\nO DJ ${breakerLabel} está sob controle automático do ${panelLabel}. Selecione o painel em MANUAL para realizar esta operação.`
-      );
-
-      EventLog.add(
-        `DJ ${breakerLabel}`,
-        `COMANDO BLOQUEADO - ${panelLabel} EM AUTOMATICO`,
-        'warning'
-      );
-
-      return false;
-    }
-
+    /*
+     * Os DJs de entrada dos PCAs podem ser comandados diretamente
+     * pelo operador sem necessidade de selecionar MANUAL no painel.
+     *
+     * Mantém-se apenas os intertravamentos elétricos e mecânicos
+     * (por exemplo: DJ extraído não pode ser ligado).
+     */
     const closing = !this.isPcaIncomingClosed(incoming);
 
     if (closing && !this.ensureBreakerInserted(breakerLabel, breakerLabel)) {
@@ -3111,25 +3316,18 @@ export const Engine = {
         return;
       }
 
-      /*
-       * Em MANUAL, os estados dos DJs do CM / CCM pertencem somente
-       * aos comandos realizados dentro do próprio quadro.
-       */
-      if (String(load.operationMode ?? 'AUTO').toUpperCase() === 'MANUAL') {
-        this.cancelPcaTransferTimer(key);
-        return;
-      }
-
       const reserveSide = config.normalSide === 'top' ? 'bottom' : 'top';
 
-      const normalSupply = this.getPcaSideSupply(
+      const normalSupply = this.getPcaLoadSideSupply(
         config.groupId,
+        config.loadId,
         config.normalSide,
         feederSupplyMap
       );
 
-      const reserveSupply = this.getPcaSideSupply(
+      const reserveSupply = this.getPcaLoadSideSupply(
         config.groupId,
+        config.loadId,
         reserveSide,
         feederSupplyMap
       );
@@ -3137,6 +3335,60 @@ export const Engine = {
       const normalEnergized = normalSupply?.energized === true;
 
       const reserveEnergized = reserveSupply?.energized === true;
+
+      /*
+       * Em MANUAL não existe fechamento automático da reserva.
+       * Porém, se a alimentação do DJ que estava fechado desaparecer,
+       * esse DJ deve abrir imediatamente por falta de tensão.
+       * Depois disso, a recomposição só ocorre por clique do operador.
+       */
+      if (String(load.operationMode ?? 'AUTO').toUpperCase() === 'MANUAL') {
+        this.cancelPcaTransferTimer(key);
+
+        const normalClosed = this.getPcaTransferDevicePhysicalClosed(
+          load,
+          config.normal
+        );
+
+        const reserveClosed = this.getPcaTransferDevicePhysicalClosed(
+          load,
+          config.reserve
+        );
+
+        if (normalClosed && !normalEnergized) {
+          this.setPcaTransferDevice(load, config.normal, false, false);
+        }
+
+        if (reserveClosed && !reserveEnergized) {
+          this.setPcaTransferDevice(load, config.reserve, false, false, '');
+        }
+
+        const normalStillClosed = this.getPcaTransferDevicePhysicalClosed(
+          load,
+          config.normal
+        );
+
+        const reserveStillClosed = this.getPcaTransferDevicePhysicalClosed(
+          load,
+          config.reserve
+        );
+
+        if (normalStillClosed && normalEnergized) {
+          load.energized = true;
+          load.activeSupply = config.normalSide;
+          load.suppliedBy = normalSupply?.suppliedBy ?? null;
+        } else if (reserveStillClosed && reserveEnergized) {
+          load.energized = true;
+          load.activeSupply = reserveSide;
+          load.suppliedBy = reserveSupply?.suppliedBy ?? null;
+        } else {
+          load.energized = false;
+          load.activeSupply = null;
+          load.suppliedBy = null;
+        }
+
+        return;
+      }
 
       if (normalEnergized && load.manualNormalOpen !== true) {
         this.cancelPcaTransferTimer(key);
@@ -3197,14 +3449,16 @@ export const Engine = {
 
         const currentMap = this.getFeederSupplyMap();
 
-        const currentNormal = this.getPcaSideSupply(
+        const currentNormal = this.getPcaLoadSideSupply(
           config.groupId,
+          config.loadId,
           config.normalSide,
           currentMap
         );
 
-        const currentReserve = this.getPcaSideSupply(
+        const currentReserve = this.getPcaLoadSideSupply(
           config.groupId,
+          config.loadId,
           reserveSide,
           currentMap
         );
@@ -3846,7 +4100,7 @@ export const Engine = {
    * DJs associados aos GAEs.
    *
    * GAE provisório:
-   *   52-1, 21103
+   *   52-1
    *
    * GAE COG:
    *   52-G, 52-2A, 52-2B
@@ -3866,10 +4120,7 @@ export const Engine = {
 
     const gaeBreakerIds = new Set([
       // GAE provisório - CF-pCA-P14
-      // 52-1 = DJ junto ao gerador
-      // 21103 = acoplamento do GAE provisório ao CCM-U01
       '52-1',
-      '21103',
 
       // GAE COG
       '52-G',
