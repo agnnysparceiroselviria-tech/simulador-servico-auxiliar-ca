@@ -487,12 +487,53 @@ export class PanelDetail {
         const reserveClosed = runtime.reserveClosed === true;
         const normalFeeding = normalClosed && runtime.normalAvailable;
         const reserveFeeding = reserveClosed && runtime.reserveAvailable;
-        const busEnergized = normalFeeding || reserveFeeding;
-        const suppliedBy = normalFeeding ? "P14" : reserveFeeding ? "R14" : null;
 
-        const busColor = busEnergized
-            ? (suppliedBy === "P14" ? "#3f7cff" : "#44b95a")
-            : "#7a858d";
+        /*
+         * CM-11 e CM-12 possuem alimentação de emergência pelo GAE-2.
+         * PDF de referência:
+         *
+         * CM-11: 1752-250 -> 1752-254 -> GAE-2
+         * CM-12: 1752-251 -> 1752-254 -> GAE-2
+         */
+        const gae2CouplingBreaker =
+            panel.id === "CM-11"
+                ? "250"
+                : panel.id === "CM-12"
+                    ? "251"
+                    : null;
+
+        const gae2Running =
+            gae2CouplingBreaker !== null &&
+            Engine.isGaeBreakerClosed?.("254") === true;
+
+        const gae2Coupled =
+            gae2CouplingBreaker !== null &&
+            Engine.isGaeBreakerClosed?.(gae2CouplingBreaker) === true;
+
+        const gae2Feeding =
+            gae2Running &&
+            gae2Coupled;
+
+        const busEnergized =
+            normalFeeding ||
+            reserveFeeding ||
+            gae2Feeding;
+
+        const suppliedBy =
+            gae2Feeding
+                ? "GAE-2"
+                : normalFeeding
+                    ? "P0912"
+                    : reserveFeeding
+                        ? "R0912"
+                        : null;
+
+        const busColor =
+            gae2Feeding
+                ? (Engine.gaeEmergencyColor ?? "#00B8D9")
+                : busEnergized
+                    ? (normalFeeding ? panel.normal.color : panel.reserve.color)
+                    : "#7a858d";
 
         root.appendChild(this.element("rect", {
             x: 120,
@@ -640,12 +681,157 @@ export class PanelDetail {
             const labelX = breakerX + 110;
             const endX = column === 0 ? 6000 : 9550;
             const y = firstY + row * rowHeight;
+            const isGae2 =
+                breaker.label === "GAE-2" &&
+                (panel.id === "CM-11" || panel.id === "CM-12");
+
             const feederEnergized = busEnergized && breaker.closed;
             const feederColor = feederEnergized ? busColor : "#7a858d";
 
             if (column === 1 && row === 0) {
                 this.line(root, 2900, 6500, 6250, 6500, busColor, 16);
                 this.line(root, 6250, 1040, 6250, 6500, busColor, 16);
+            }
+
+            if (isGae2) {
+                const gaeColor =
+                    Engine.gaeEmergencyColor ?? "#00B8D9";
+
+                const couplingClosed =
+                    Engine.isGaeBreakerClosed?.(gae2CouplingBreaker) === true;
+
+                const primaryClosed =
+                    Engine.isGaeBreakerClosed?.("254") === true;
+
+                const sourceLineColor =
+                    primaryClosed
+                        ? gaeColor
+                        : "#7a858d";
+
+                const busSideLineColor =
+                    couplingClosed && primaryClosed
+                        ? gaeColor
+                        : "#7a858d";
+
+                const couplingX = breakerX;
+                const primaryX = breakerX + 520;
+                const generatorX = breakerX + 1040;
+
+                this.line(
+                    root,
+                    busX,
+                    y,
+                    couplingX - 32,
+                    y,
+                    busSideLineColor,
+                    7
+                );
+
+                this.breaker(root, {
+                    id: gae2CouplingBreaker,
+                    x: couplingX,
+                    y,
+                    closed: couplingClosed,
+                    energized: couplingClosed && primaryClosed,
+                    onCommand: () =>
+                        Engine.toggleGaeBreaker?.(gae2CouplingBreaker),
+                    size: 58
+                });
+
+                this.text(
+                    root,
+                    couplingX,
+                    y - 52,
+                    panel.id === "CM-11" ? "1752-250" : "1752-251",
+                    27,
+                    { anchor: "middle", weight: 800 }
+                );
+
+                this.line(
+                    root,
+                    couplingX + 32,
+                    y,
+                    primaryX - 32,
+                    y,
+                    sourceLineColor,
+                    7
+                );
+
+                this.breaker(root, {
+                    id: "254",
+                    x: primaryX,
+                    y,
+                    closed: primaryClosed,
+                    energized: primaryClosed,
+                    onCommand: () =>
+                        Engine.toggleGaeBreaker?.("254"),
+                    size: 58
+                });
+
+                this.text(
+                    root,
+                    primaryX,
+                    y - 52,
+                    "1752-254",
+                    27,
+                    { anchor: "middle", weight: 800 }
+                );
+
+                this.line(
+                    root,
+                    primaryX + 32,
+                    y,
+                    generatorX - 70,
+                    y,
+                    sourceLineColor,
+                    7
+                );
+
+                root.appendChild(
+                    this.element("circle", {
+                        cx: generatorX,
+                        cy: y,
+                        r: 70,
+                        fill: primaryClosed ? gaeColor : "#ffffff",
+                        stroke: primaryClosed ? gaeColor : "#263238",
+                        "stroke-width": 7
+                    })
+                );
+
+                root.appendChild(
+                    this.element("circle", {
+                        cx: generatorX,
+                        cy: y,
+                        r: 58,
+                        fill: "none",
+                        stroke: primaryClosed ? "#ffffff" : "#263238",
+                        "stroke-width": 4
+                    })
+                );
+
+                this.text(
+                    root,
+                    generatorX,
+                    y + 13,
+                    "GAE-2",
+                    31,
+                    {
+                        anchor: "middle",
+                        weight: 800,
+                        color: primaryClosed ? "#ffffff" : "#263238"
+                    }
+                );
+
+                this.text(
+                    root,
+                    busX - 85,
+                    y - 26,
+                    "2A",
+                    28,
+                    { anchor: "end", weight: 800 }
+                );
+
+                return;
             }
 
             this.line(root, busX, y, endX, y, feederColor, 7);
@@ -683,6 +869,12 @@ export class PanelDetail {
         this.text(root, 500, 5870, `Distância de trabalho: ${panel.arcFlash.distance}`, 31);
         this.text(root, 500, 5980, `Energia incidente: ${panel.arcFlash.incidentEnergy}`, 31);
         this.text(root, 500, 6090, `EPI requerido: ${panel.arcFlash.ppe}`, 31);
+        if (panel.arcFlash.ppeDetail) {
+            this.text(root, 500, 6185, panel.arcFlash.ppeDetail, 24, {
+                color: "#53636c",
+                weight: 500
+            });
+        }
 
         // Últimos eventos do simulador interno.
         root.appendChild(this.element("rect", {

@@ -5,15 +5,15 @@ const load = (id, label, options = {}) => ({
     reserve: options.reserve ?? /^Reserva$/i.test(label),
     available: options.available ?? true,
     openSymbol: options.openSymbol ?? "automatic"
-  });
-  
-  const loads = items =>
+});
+
+const loads = items =>
     items.map(([id, label, options]) => load(id, label, options));
-  
-  const cmMachineLoads = ({
+
+const cmMachineLoads = ({
     disabledCompressor = "Reserva",
     compressorLabel = "Compressor do Regulador de Velocidade"
-  } = {}) => loads([
+} = {}) => loads([
     ["1C", "TRAFO de controle e rel\u00E9s de m\u00EDnima tens\u00E3o (principal e reserva)"],
     ["2A", "Bomba 1 - Regulador de Velocidade"],
     ["2B", "Bomba 2 - Regulador de Velocidade"],
@@ -37,9 +37,9 @@ const load = (id, label, options = {}) => ({
     ["4D", "Bomba 1 - Circula\u00E7\u00E3o de \u00D3leo - Mancal Guia Inferior"],
     ["4E", "Bomba 2 - Circula\u00E7\u00E3o de \u00D3leo - Mancal Guia Inferior"],
     ["4F", "Exaustor de Vapores - Mancal de Escora"]
-  ]);
-  
-  const panels = {
+]);
+
+const panels = {
     "CM-02": {
         id: "CM-02",
         title: "CM-02",
@@ -80,7 +80,7 @@ const load = (id, label, options = {}) => ({
             ppe: "RISCO 2"
         },
         outgoing: loads([
-            ["1C", "TRAFO de Controle e Rel\u00E9s de M\u00EDnima Tens\u00E3o"],
+            ["1C", "TRAFO de Controle e Rel\u00E9s de M\u00EDnima Tens\u00E3o (Princ. e Reserva)"],
             ["2B", "Bomba 1 - Regulador de Velocidade"],
             ["2C", "Bomba 2 - Regulador de Velocidade"],
             ["3A", "Comporta de Emerg\u00EAncia - Tomada d'\u00C1gua"],
@@ -102,7 +102,7 @@ const load = (id, label, options = {}) => ({
             ["5F", "Reserva"]
         ])
     },
-  
+
     "CCM-U03": {
         id: "CCM-U03",
         title: "CF-CCM-U03",
@@ -180,7 +180,7 @@ const load = (id, label, options = {}) => ({
             ["52-35", "Veda\u00E7\u00E3o do Eixo - Bomba 2"]
         ])
     },
-  
+
     "CCM-U04": {
         id: "CCM-U04",
         title: "CF-CCM-U04",
@@ -261,7 +261,7 @@ const load = (id, label, options = {}) => ({
             ["52-21462", "Seccionadora Terra", { closed: false }]
         ])
     },
-  
+
     "CM-05": {
         id: "CM-05",
         title: "CM-05",
@@ -306,7 +306,7 @@ const load = (id, label, options = {}) => ({
             compressorLabel: "CF-MCP-U05 - Compressor de Ar do Regulador de Velocidade"
         })
     },
-  
+
     "CM-06": {
         id: "CM-06",
         title: "CM-06",
@@ -348,7 +348,7 @@ const load = (id, label, options = {}) => ({
         },
         outgoing: cmMachineLoads()
     },
-  
+
     "CCM-U07": {
         id: "CCM-U07",
         title: "CF-CCM-U07",
@@ -426,7 +426,7 @@ const load = (id, label, options = {}) => ({
             ["52-35", "Veda\u00E7\u00E3o do Eixo - Bomba 2"]
         ])
     },
-  
+
     "CM-08": {
         id: "CM-08",
         title: "CM-08",
@@ -470,7 +470,7 @@ const load = (id, label, options = {}) => ({
             disabledCompressor: "CP-08 (Desativado)"
         })
     },
-  
+
     "CCM-U09": {
         id: "CCM-U09",
         title: "CF-CCM-U09",
@@ -551,7 +551,7 @@ const load = (id, label, options = {}) => ({
             ["52-21962", "Seccionadora Faca Terra 1729-17 - Cabos desconectados", { closed: false }]
         ])
     },
-  
+
     "CM-10": {
         id: "CM-10",
         title: "CM-10",
@@ -595,7 +595,7 @@ const load = (id, label, options = {}) => ({
             disabledCompressor: "Compressor CP-10 (Desativado)"
         })
     },
-  
+
     "CM-11": {
         id: "CM-11",
         title: "CM-11",
@@ -626,6 +626,13 @@ const load = (id, label, options = {}) => ({
             color: "#3dbb5a"
         },
         reserveDelaySeconds: 3,
+        emergency: {
+            source: "GAE-2",
+            primaryBreaker: "254",
+            primaryLabel: "1752-254",
+            couplingBreaker: "250",
+            couplingLabel: "1752-250"
+        },
         dcSupplies: [
             "3qc-2 (125 Vcc)",
             "3qc-1 (125 Vcc)"
@@ -633,10 +640,10 @@ const load = (id, label, options = {}) => ({
         arcFlash: {
             distance: "1,46 m",
             energy: "8,1 cal/cm\u00B2",
-            ppe: "RISCO 4"
+            ppe: "RISCO 4 - Capuz carrasco; Luva Isolante Classe 00 e Calçado de segurança"
         },
         outgoing: loads([
-            ["1C", "TRAFO de Controle e Rel\u00E9s de M\u00EDnima Tens\u00E3o"],
+            ["1C", "TRAFO de Controle e Rel\u00E9s de M\u00EDnima Tens\u00E3o (Princ. e Reserva)"],
             ["2B", "Bomba 1 - Regulador de Velocidade"],
             ["2C", "Bomba 2 - Regulador de Velocidade"],
             ["2D", "Comporta de Emerg\u00EAncia - Tomada d'\u00C1gua"],
@@ -660,7 +667,7 @@ const load = (id, label, options = {}) => ({
             ["4H", "Sistema Anti-inc\u00EAndio - Espuma Qu\u00EDmica"]
         ])
     },
-  
+
     "CM-12": {
         id: "CM-12",
         title: "CM-12",
@@ -691,6 +698,13 @@ const load = (id, label, options = {}) => ({
             color: "#3dbb5a"
         },
         reserveDelaySeconds: 3,
+        emergency: {
+            source: "GAE-2",
+            primaryBreaker: "254",
+            primaryLabel: "1752-254",
+            couplingBreaker: "251",
+            couplingLabel: "1752-251"
+        },
         dcSupplies: [
             "3qc-2 (125 Vcc)",
             "3qc-1 (125 Vcc)"
@@ -698,7 +712,7 @@ const load = (id, label, options = {}) => ({
         arcFlash: {
             distance: "1,278 m",
             energy: "6,5 cal/cm\u00B2",
-            ppe: "RISCO 2"
+            ppe: "RISCO 2 - Vestimenta risco 2; Capacete com viseira; Balaclava; Óculos de segurança; Luva Isolante Classe 00 e Calçado de Segurança"
         },
         outgoing: loads([
             ["1C", "TRAFO de Controle e Rel\u00E9s de M\u00EDnima Tens\u00E3o"],
@@ -725,7 +739,7 @@ const load = (id, label, options = {}) => ({
             ["4H", "Sistema Anti-inc\u00EAndio - Espuma Qu\u00EDmica"]
         ])
     },
-  
+
     "CCM-U13": {
         id: "CCM-U13",
         title: "CF-CCM-U13",
@@ -806,7 +820,7 @@ const load = (id, label, options = {}) => ({
             ["52-22362", "Seccionadora de Aterramento", { closed: false }]
         ])
     },
-  
+
     "CM-14": {
         id: "CM-14",
         title: "CM-14",
@@ -870,7 +884,7 @@ const load = (id, label, options = {}) => ({
             ["4F", "Exaustor de Vapores - Mancal de Escora"]
         ])
     },
-  
+
     "CM-15": {
         id: "CM-15",
         title: "CM-15",
@@ -933,7 +947,7 @@ const load = (id, label, options = {}) => ({
             ["4F", "Exaustor de Vapores - Mancal de Escora"]
         ])
     },
-  
+
     "CM-16": {
         id: "CM-16",
         title: "CM-16",
@@ -997,7 +1011,7 @@ const load = (id, label, options = {}) => ({
             ["4F", "Exaustor de Vapores - Mancal de Escora"]
         ])
     },
-  
+
     "CM-17": {
         id: "CM-17",
         title: "CM-17",
@@ -1060,7 +1074,7 @@ const load = (id, label, options = {}) => ({
             ["4F", "Exaustor de Vapores - Mancal de Escora"]
         ])
     },
-  
+
     "CM-18": {
         id: "CM-18",
         title: "CM-18",
@@ -1123,7 +1137,7 @@ const load = (id, label, options = {}) => ({
             ["4F", "Exaustor de Vapores de \u00D3leo - Mancal de Escora"]
         ])
     },
-  
+
     "CM-19": {
         id: "CM-19",
         title: "CM-19",
@@ -1186,7 +1200,7 @@ const load = (id, label, options = {}) => ({
             ["4F", "Exaustor de Vapores de \u00D3leo - Mancal de Escora"]
         ])
     },
-  
+
     "CCM-U20": {
         id: "CCM-U20",
         title: "CF-CCM-U20",
@@ -1267,9 +1281,9 @@ const load = (id, label, options = {}) => ({
             ["52-23062", "Reserva"]
         ])
     }
-  };
-  
-  const aliases = {
+};
+
+const aliases = {
     CM2: "CM-02",
     CM02: "CM-02",
     CCMU03: "CCM-U03",
@@ -1300,19 +1314,20 @@ const load = (id, label, options = {}) => ({
     CM19: "CM-19",
     CCMU20: "CCM-U20",
     CM20: "CCM-U20"
-  };
-  
-  function normalize(value) {
+};
+
+function normalize(value) {
     return String(value ?? "")
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "");
-  }
-  
-  function clonePanel(panel) {
+}
+
+function clonePanel(panel) {
     return {
         ...panel,
         normal: { ...panel.normal },
         reserve: { ...panel.reserve },
+        emergency: panel.emergency ? { ...panel.emergency } : null,
         dcSupplies: [...panel.dcSupplies],
         arcFlash: { ...panel.arcFlash },
         outgoing: panel.outgoing.map(item => ({
@@ -1320,25 +1335,25 @@ const load = (id, label, options = {}) => ({
             defaultClosed: item.closed
         }))
     };
-  }
-  
-  export const AuxPanelDetailDatabase = {
+}
+
+export const AuxPanelDetailDatabase = {
     resolveId(value) {
         const direct = String(value ?? "");
         if (panels[direct]) return direct;
         return aliases[normalize(value)] ?? null;
     },
-  
+
     has(value) {
         return Boolean(this.resolveId(value));
     },
-  
+
     get(value) {
         const id = this.resolveId(value);
         return id ? clonePanel(panels[id]) : null;
     },
-  
+
     list() {
         return Object.keys(panels);
     }
-  };
+};

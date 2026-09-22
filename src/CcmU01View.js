@@ -324,6 +324,12 @@ export const CcmU01View = {
          */
         operationMode: "AUTO",
 
+        // Estado elétrico real recebido do Engine.
+        energized: true,
+        suppliedBy: "P14",
+        emergencyEnergized: false,
+        emergencyColor: "#00B8D9",
+
         outgoing: cloneOutgoing(),
         events: []
     },
@@ -368,7 +374,7 @@ export const CcmU01View = {
         backButton.addEventListener("click", () => this.close());
 
         const title = document.createElement("strong");
-        title.textContent = "SIMULADOR CF-CCM-U01";
+        title.textContent = "CF-CCM-U01";
         Object.assign(title.style, {
             display: "block",
             minWidth: "0",
@@ -680,7 +686,13 @@ export const CcmU01View = {
             reserveClosed:
                 this.state.reserveClosed,
             transferRemaining:
-                this.state.transferRemaining
+                this.state.transferRemaining,
+            energized:
+                this.state.energized,
+            suppliedBy:
+                this.state.suppliedBy,
+            emergencyEnergized:
+                this.state.emergencyEnergized
         };
 
         this.state.normalAvailable =
@@ -697,6 +709,31 @@ export const CcmU01View = {
         this.state.transferRemaining =
             sharedState.transferRemaining;
 
+        /*
+         * O estado energized/suppliedBy do Engine é a fonte de verdade do
+         * diagrama interno. Isso é essencial no BLACKOUT e também quando o
+         * GD PROV passa a alimentar o CCM-U01 pelo DJ 21103.
+         */
+        this.state.energized =
+            sharedState.energized === true;
+        this.state.suppliedBy =
+            sharedState.suppliedBy ?? null;
+        this.state.emergencyEnergized =
+            this.state.energized &&
+            String(this.state.suppliedBy ?? "")
+                .toUpperCase()
+                .startsWith("GAE_");
+        this.state.emergencyColor =
+            Engine.gaeEmergencyColor ?? "#00B8D9";
+
+        // O DJ 52-21103 mostrado no detalhe representa o 21103 do Engine.
+        const gaeIncoming =
+            this.state.outgoing.find(item => item.id === "52-21103");
+        if (gaeIncoming) {
+            gaeIncoming.closed =
+                Engine.isGaeBreakerClosed?.("21103") === true;
+        }
+
         const changed =
             previous.operationMode !==
                 this.state.operationMode ||
@@ -705,7 +742,13 @@ export const CcmU01View = {
             previous.reserveClosed !==
                 this.state.reserveClosed ||
             previous.transferRemaining !==
-                this.state.transferRemaining;
+                this.state.transferRemaining ||
+            previous.energized !==
+                this.state.energized ||
+            previous.suppliedBy !==
+                this.state.suppliedBy ||
+            previous.emergencyEnergized !==
+                this.state.emergencyEnergized;
 
         if (
             redraw &&
@@ -831,6 +874,29 @@ export const CcmU01View = {
     },
 
     getBusState() {
+        /*
+         * Alimentação pelo GAE tem prioridade visual no detalhe.
+         * O Engine marca suppliedBy como GAE_PROV quando 52-1/21103
+         * energizam o CCM-U01 durante o blackout.
+         */
+        if (
+            this.state.emergencyEnergized === true ||
+            (
+                this.state.energized === true &&
+                String(this.state.suppliedBy ?? "")
+                    .toUpperCase()
+                    .startsWith("GAE_")
+            )
+        ) {
+            return {
+                energized: true,
+                source: "GAE PROV",
+                color: this.state.emergencyColor ??
+                    Engine.gaeEmergencyColor ??
+                    "#00B8D9"
+            };
+        }
+
         if (this.state.normalClosed && this.state.normalAvailable) {
             return {
                 energized: true,
@@ -930,8 +996,42 @@ export const CcmU01View = {
         const incomingX = 520;
         const normalClosed = this.state.normalClosed === true;
         const reserveClosed = this.state.reserveClosed === true;
-        const normalAfter = normalClosed ? COLORS.normal : COLORS.off;
-        const reserveAfter = reserveClosed ? COLORS.reserve : COLORS.off;
+
+        /*
+         * A cor do caminho a montante deve representar TENSÃO REAL,
+         * e não apenas a posição mecânica do DJ.
+         *
+         * Durante blackout:
+         * 1QP B-I / B-III sem tensão -> todo o caminho fica cinza.
+         */
+        const normalSourceEnergized = this.state.normalAvailable === true;
+        const reserveSourceEnergized = this.state.reserveAvailable === true;
+
+        const normalSourceColor =
+            normalSourceEnergized ? COLORS.normal : COLORS.off;
+
+        const reserveSourceColor =
+            reserveSourceEnergized ? COLORS.reserve : COLORS.off;
+
+        const normalBreakerFill =
+            normalClosed
+                ? (normalSourceEnergized ? COLORS.closed : COLORS.deenergized)
+                : COLORS.open;
+
+        const reserveBreakerFill =
+            reserveClosed
+                ? (reserveSourceEnergized ? COLORS.closed : COLORS.deenergized)
+                : COLORS.open;
+
+        const normalAfter =
+            normalClosed && normalSourceEnergized
+                ? COLORS.normal
+                : COLORS.off;
+
+        const reserveAfter =
+            reserveClosed && reserveSourceEnergized
+                ? COLORS.reserve
+                : COLORS.off;
         const reserveStatus = reserveClosed
             ? "FECHADO • ALIMENTANDO"
             : this.state.transferRemaining > 0
@@ -941,29 +1041,29 @@ export const CcmU01View = {
         return `
             <g aria-label="Alimentação normal P14">
                 <text x="${x}" y="390" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" fill="${COLORS.text}">1QP - B-I</text>
-                <line x1="${x}" y1="398" x2="${x}" y2="422" stroke="${COLORS.normal}" stroke-width="3" />
-                <rect x="${x - 14}" y="422" width="28" height="28" fill="${COLORS.closed}" />
+                <line x1="${x}" y1="398" x2="${x}" y2="422" stroke="${normalSourceColor}" stroke-width="3" />
+                <rect x="${x - 14}" y="422" width="28" height="28" fill="${normalSourceEnergized ? COLORS.closed : COLORS.deenergized}" />
                 <text x="${x + 26}" y="442" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="${COLORS.text}">1752-115</text>
-                <line x1="${x}" y1="450" x2="${x}" y2="482" stroke="${COLORS.normal}" stroke-width="3" />
+                <line x1="${x}" y1="450" x2="${x}" y2="482" stroke="${normalSourceColor}" stroke-width="3" />
                 <text x="${x - 25}" y="475" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="${COLORS.muted}">CF-STS-P14</text>
-                <circle cx="${x}" cy="500" r="18" fill="#ffffff" stroke="${COLORS.normal}" stroke-width="2" />
-                <circle cx="${x}" cy="520" r="18" fill="#ffffff" stroke="${COLORS.normal}" stroke-width="2" />
+                <circle cx="${x}" cy="500" r="18" fill="#ffffff" stroke="${normalSourceColor}" stroke-width="2" />
+                <circle cx="${x}" cy="520" r="18" fill="#ffffff" stroke="${normalSourceColor}" stroke-width="2" />
                 <text x="${x - 35}" y="507" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${COLORS.text}">CF-TSA-P14</text>
                 <text x="${x - 35}" y="526" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="${COLORS.muted}">14,4 / 0,46 kV</text>
                 <text x="${x - 35}" y="543" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="${COLORS.muted}">1500 kVA</text>
-                <line x1="${x}" y1="538" x2="${x}" y2="567" stroke="${COLORS.normal}" stroke-width="3" />
-                <rect x="${x - 12}" y="567" width="24" height="24" fill="${COLORS.closed}" />
+                <line x1="${x}" y1="538" x2="${x}" y2="567" stroke="${normalSourceColor}" stroke-width="3" />
+                <rect x="${x - 12}" y="567" width="24" height="24" fill="${normalSourceEnergized ? COLORS.closed : COLORS.deenergized}" />
                 <text x="${x + 24}" y="584" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="${COLORS.text}">52-E1</text>
-                <line x1="${x}" y1="591" x2="${x}" y2="625" stroke="${COLORS.normal}" stroke-width="3" />
+                <line x1="${x}" y1="591" x2="${x}" y2="625" stroke="${normalSourceColor}" stroke-width="3" />
                 <rect x="195" y="625" width="240" height="54" fill="#ffffff" stroke="${COLORS.deenergized}" stroke-width="1.5" />
-                <line x1="220" y1="652" x2="410" y2="652" stroke="${COLORS.normal}" stroke-width="3" />
+                <line x1="220" y1="652" x2="410" y2="652" stroke="${normalSourceColor}" stroke-width="3" />
                 <text x="180" y="660" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="${COLORS.text}">CF-pCA-P14</text>
-                <line x1="${x}" y1="679" x2="${x}" y2="704" stroke="${COLORS.normal}" stroke-width="3" />
-                <rect x="${x - 13}" y="704" width="26" height="26" fill="${COLORS.closed}" />
+                <line x1="${x}" y1="679" x2="${x}" y2="704" stroke="${normalSourceColor}" stroke-width="3" />
+                <rect x="${x - 13}" y="704" width="26" height="26" fill="${normalSourceEnergized ? COLORS.closed : COLORS.deenergized}" />
                 <text x="${x - 25}" y="723" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="${COLORS.text}">52-1</text>
-                <line x1="${x}" y1="730" x2="${x}" y2="${normalY}" stroke="${COLORS.normal}" stroke-width="3" />
-                <line x1="${x}" y1="${normalY}" x2="${incomingX - 14}" y2="${normalY}" stroke="${COLORS.normal}" stroke-width="3" />
-                <rect x="${incomingX - 14}" y="${normalY - 14}" width="28" height="28" fill="${normalClosed ? COLORS.closed : COLORS.open}" stroke="${normalClosed ? COLORS.closed : COLORS.deenergized}" stroke-width="2" />
+                <line x1="${x}" y1="730" x2="${x}" y2="${normalY}" stroke="${normalSourceColor}" stroke-width="3" />
+                <line x1="${x}" y1="${normalY}" x2="${incomingX - 14}" y2="${normalY}" stroke="${normalSourceColor}" stroke-width="3" />
+                <rect x="${incomingX - 14}" y="${normalY - 14}" width="28" height="28" fill="${normalBreakerFill}" stroke="${normalClosed ? normalBreakerFill : COLORS.deenergized}" stroke-width="2" />
                 ${normalClosed ? "" : openBreakerSymbol(incomingX - 14, normalY - 14, 28)}
                 <text x="${incomingX}" y="${normalY - 25}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="${COLORS.text}">52-21101</text>
                 <text x="${incomingX}" y="${normalY + 40}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="800" fill="${normalClosed ? COLORS.closed : COLORS.muted}">${normalClosed ? "FECHADO" : "ABERTO"}</text>
@@ -972,34 +1072,34 @@ export const CcmU01View = {
             </g>
 
             <g aria-label="Alimentação reserva R14">
-                <line x1="${x}" y1="${reserveY}" x2="${incomingX - 14}" y2="${reserveY}" stroke="${COLORS.reserve}" stroke-width="3" />
-                <rect x="${incomingX - 14}" y="${reserveY - 14}" width="28" height="28" fill="${reserveClosed ? COLORS.closed : COLORS.open}" stroke="${reserveClosed ? COLORS.closed : COLORS.deenergized}" stroke-width="2" />
+                <line x1="${x}" y1="${reserveY}" x2="${incomingX - 14}" y2="${reserveY}" stroke="${reserveSourceColor}" stroke-width="3" />
+                <rect x="${incomingX - 14}" y="${reserveY - 14}" width="28" height="28" fill="${reserveBreakerFill}" stroke="${reserveClosed ? reserveBreakerFill : COLORS.deenergized}" stroke-width="2" />
                 ${reserveClosed ? "" : openBreakerSymbol(incomingX - 14, reserveY - 14, 28)}
                 <text x="${incomingX}" y="${reserveY - 25}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="${COLORS.text}">52-21102</text>
                 <text x="${incomingX}" y="${reserveY + 40}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="800" fill="${reserveClosed ? COLORS.closed : this.state.transferRemaining > 0 ? COLORS.warning : COLORS.muted}">${escapeXml(reserveStatus)}</text>
                 <line x1="${incomingX + 14}" y1="${reserveY}" x2="${trunkX}" y2="${reserveY}" stroke="${reserveAfter}" stroke-width="3" />
                 <rect class="ccm-incoming-command" data-side="reserve" x="${incomingX - 65}" y="${reserveY - 52}" width="130" height="105" rx="7" fill="#ffffff" fill-opacity="0" stroke="transparent" stroke-width="3" pointer-events="all" role="button" tabindex="0" aria-label="Comandar DJ 52-21102" />
-                <line x1="${x}" y1="${reserveY}" x2="${x}" y2="1105" stroke="${COLORS.reserve}" stroke-width="3" />
-                <rect x="${x - 13}" y="1105" width="26" height="26" fill="${COLORS.closed}" />
+                <line x1="${x}" y1="${reserveY}" x2="${x}" y2="1105" stroke="${reserveSourceColor}" stroke-width="3" />
+                <rect x="${x - 13}" y="1105" width="26" height="26" fill="${reserveSourceEnergized ? COLORS.closed : COLORS.deenergized}" />
                 <text x="${x - 25}" y="1124" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="${COLORS.text}">52-1</text>
-                <line x1="${x}" y1="1131" x2="${x}" y2="1160" stroke="${COLORS.reserve}" stroke-width="3" />
+                <line x1="${x}" y1="1131" x2="${x}" y2="1160" stroke="${reserveSourceColor}" stroke-width="3" />
                 <rect x="195" y="1160" width="240" height="54" fill="#ffffff" stroke="${COLORS.deenergized}" stroke-width="1.5" />
-                <line x1="220" y1="1187" x2="410" y2="1187" stroke="${COLORS.reserve}" stroke-width="3" />
+                <line x1="220" y1="1187" x2="410" y2="1187" stroke="${reserveSourceColor}" stroke-width="3" />
                 <text x="180" y="1195" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="${COLORS.text}">CF-pCA-R14</text>
-                <line x1="${x}" y1="1214" x2="${x}" y2="1283" stroke="${COLORS.reserve}" stroke-width="3" />
-                <rect x="${x - 12}" y="1283" width="24" height="24" fill="${COLORS.closed}" />
+                <line x1="${x}" y1="1214" x2="${x}" y2="1283" stroke="${reserveSourceColor}" stroke-width="3" />
+                <rect x="${x - 12}" y="1283" width="24" height="24" fill="${reserveSourceEnergized ? COLORS.closed : COLORS.deenergized}" />
                 <text x="${x + 24}" y="1300" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="${COLORS.text}">52-E1</text>
-                <line x1="${x}" y1="1307" x2="${x}" y2="1336" stroke="${COLORS.reserve}" stroke-width="3" />
-                <circle cx="${x}" cy="1354" r="18" fill="#ffffff" stroke="${COLORS.reserve}" stroke-width="2" />
-                <circle cx="${x}" cy="1374" r="18" fill="#ffffff" stroke="${COLORS.reserve}" stroke-width="2" />
+                <line x1="${x}" y1="1307" x2="${x}" y2="1336" stroke="${reserveSourceColor}" stroke-width="3" />
+                <circle cx="${x}" cy="1354" r="18" fill="#ffffff" stroke="${reserveSourceColor}" stroke-width="2" />
+                <circle cx="${x}" cy="1374" r="18" fill="#ffffff" stroke="${reserveSourceColor}" stroke-width="2" />
                 <text x="${x - 35}" y="1360" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${COLORS.text}">CF-TSA-R14</text>
                 <text x="${x - 35}" y="1379" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="${COLORS.muted}">14,4 / 0,46 kV</text>
                 <text x="${x - 35}" y="1396" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="${COLORS.muted}">1500 kVA</text>
-                <line x1="${x}" y1="1392" x2="${x}" y2="1425" stroke="${COLORS.reserve}" stroke-width="3" />
+                <line x1="${x}" y1="1392" x2="${x}" y2="1425" stroke="${reserveSourceColor}" stroke-width="3" />
                 <text x="${x - 25}" y="1420" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="${COLORS.muted}">CF-STS-R14</text>
-                <rect x="${x - 14}" y="1425" width="28" height="28" fill="${COLORS.closed}" />
+                <rect x="${x - 14}" y="1425" width="28" height="28" fill="${reserveSourceEnergized ? COLORS.closed : COLORS.deenergized}" />
                 <text x="${x + 26}" y="1445" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="${COLORS.text}">1752-123</text>
-                <line x1="${x}" y1="1453" x2="${x}" y2="1477" stroke="${COLORS.reserve}" stroke-width="3" />
+                <line x1="${x}" y1="1453" x2="${x}" y2="1477" stroke="${reserveSourceColor}" stroke-width="3" />
                 <text x="${x}" y="1500" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" fill="${COLORS.text}">1QP - B-III</text>
             </g>
 
@@ -1059,7 +1159,7 @@ export const CcmU01View = {
         return `
             <g class="ccm-outgoing-command" data-breaker-id="${escapeXml(item.id)}" role="button" tabindex="0" aria-label="Comandar DJ ${escapeXml(item.id)} - ${escapeXml(item.label)}">
                 <rect class="ccm-outgoing-hitbox" x="645" y="${y - 19}" width="790" height="38" rx="4" fill="#ffffff" fill-opacity="0" stroke="transparent" stroke-width="2" pointer-events="all" />
-                <line x1="${trunkX}" y1="${y}" x2="${breakerX}" y2="${y}" stroke="${bus.color}" stroke-width="2" />
+                <line x1="${trunkX}" y1="${y}" x2="${breakerX}" y2="${y}" stroke="${bus.energized ? bus.color : COLORS.off}" stroke-width="2" />
                 <rect x="${breakerX}" y="${breakerY}" width="${size}" height="${size}" fill="${fill}" stroke="${closed ? fill : COLORS.deenergized}" stroke-width="1.6" />
                 ${closed ? "" : openBreakerSymbol(breakerX, breakerY, size, item.openSymbol)}
                 <text x="712" y="${y - 2}" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="800" fill="${COLORS.text}">${escapeXml(item.id)}</text>
@@ -1072,22 +1172,87 @@ export const CcmU01View = {
     },
 
     gaeOutgoingSvg(item, y, bus, fill, lineColor, status, statusColor) {
+        /*
+         * Estado real do GAE PROV dentro do diagrama do CCM-U01.
+         *
+         * 52-1   = DJ principal do grupo gerador.
+         * 21103  = acoplamento do GAE ao CCM-U01.
+         *
+         * O círculo identifica o GERADOR EM OPERAÇÃO assim que o 52-1 fecha.
+         * O trecho até o barramento fica ciano somente quando 52-1 + 21103
+         * estiverem fechados e o CCM estiver efetivamente alimentado pelo GAE.
+         */
+        const gaeRunning =
+            Engine.isGaeBreakerClosed?.("52-1") === true;
+
+        const gaeCoupled =
+            Engine.isGaeBreakerClosed?.("21103") === true;
+
+        const gaeSupplying =
+            gaeRunning &&
+            gaeCoupled &&
+            bus.energized === true;
+
+        const gaeColor =
+            Engine.gaeEmergencyColor ?? "#00B8D9";
+
+        const gaeBreakerFill =
+            gaeRunning
+                ? COLORS.closed
+                : COLORS.open;
+
+        const gaeBreakerStroke =
+            gaeRunning
+                ? COLORS.closed
+                : COLORS.deenergized;
+
+        const gaeLineColor =
+            gaeRunning
+                ? gaeColor
+                : COLORS.off;
+
+        const gaeCircleFill =
+            gaeRunning
+                ? gaeColor
+                : "#ffffff";
+
+        const gaeCircleStroke =
+            gaeRunning
+                ? gaeColor
+                : COLORS.deenergized;
+
+        const gaeTextColor =
+            gaeRunning
+                ? "#ffffff"
+                : COLORS.text;
+
+        const busSideColor =
+            gaeSupplying
+                ? gaeColor
+                : (bus.energized ? bus.color : COLORS.off);
+
         return `
             <g class="ccm-outgoing-command" data-breaker-id="${escapeXml(item.id)}" role="button" tabindex="0" aria-label="Comandar DJ ${escapeXml(item.id)} - Alimentação do GAE-1">
                 <rect class="ccm-outgoing-hitbox" x="645" y="${y - 22}" width="790" height="55" rx="4" fill="#ffffff" fill-opacity="0" stroke="transparent" stroke-width="2" pointer-events="all" />
-                <line x1="650" y1="${y}" x2="680" y2="${y}" stroke="${bus.color}" stroke-width="2" />
+
+                <line x1="650" y1="${y}" x2="680" y2="${y}" stroke="${busSideColor}" stroke-width="2" />
+
                 <rect x="680" y="${y - 10}" width="20" height="20" fill="${fill}" stroke="${item.closed ? fill : COLORS.deenergized}" stroke-width="1.6" />
                 ${item.closed ? "" : openBreakerSymbol(680, y - 10, 20, item.openSymbol)}
                 <text x="712" y="${y - 2}" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="800" fill="${COLORS.text}">${escapeXml(item.id)}</text>
                 <text x="712" y="${y + 13}" font-family="Segoe UI, Arial, sans-serif" font-size="9.5" font-weight="800" fill="${statusColor}">${status}</text>
-                <line x1="790" y1="${y}" x2="930" y2="${y}" stroke="${lineColor}" stroke-width="2" />
-                <rect x="930" y="${y - 10}" width="20" height="20" fill="#ffffff" stroke="${COLORS.deenergized}" stroke-width="1.6" />
-                ${openBreakerSymbol(930, y - 10, 20)}
+
+                <line x1="790" y1="${y}" x2="930" y2="${y}" stroke="${gaeSupplying ? gaeColor : lineColor}" stroke-width="2" />
+
+                <rect x="930" y="${y - 10}" width="20" height="20" fill="${gaeBreakerFill}" stroke="${gaeBreakerStroke}" stroke-width="1.6" />
+                ${gaeRunning ? "" : openBreakerSymbol(930, y - 10, 20)}
                 <text x="919" y="${y - 16}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="${COLORS.text}">52-nnnn</text>
-                <line x1="950" y1="${y}" x2="1010" y2="${y}" stroke="${COLORS.off}" stroke-width="2" />
-                <circle cx="1038" cy="${y}" r="27" fill="#ffffff" stroke="${COLORS.deenergized}" stroke-width="2" />
-                <circle cx="1038" cy="${y}" r="22" fill="none" stroke="${COLORS.deenergized}" stroke-width="1" />
-                <text x="1038" y="${y + 5}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="${COLORS.text}">GAE-1</text>
+
+                <line x1="950" y1="${y}" x2="1010" y2="${y}" stroke="${gaeLineColor}" stroke-width="2" />
+
+                <circle cx="1038" cy="${y}" r="27" fill="${gaeCircleFill}" stroke="${gaeCircleStroke}" stroke-width="2" />
+                <circle cx="1038" cy="${y}" r="22" fill="none" stroke="${gaeRunning ? "#ffffff" : COLORS.deenergized}" stroke-width="1" />
+                <text x="1038" y="${y + 5}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="${gaeTextColor}">GAE-1</text>
             </g>
         `;
     },

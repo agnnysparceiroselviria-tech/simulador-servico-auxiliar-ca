@@ -34,7 +34,8 @@ export class Generator extends Equipment {
             showLabel = true,
             showCommand = true,
             commandSide = "right",
-            onCommand = null
+            onCommand = null,
+            onOpenSimulator = null
         } = data;
 
         const visualColor =
@@ -348,6 +349,57 @@ export class Generator extends Equipment {
                 }
             )
         );
+
+        if (typeof onOpenSimulator === "function") {
+            // DUPLO CLIQUE no corpo/identificacao da UG abre o simulador.
+            // O botao LIGA/DESLIGA continua independente porque interrompe a propagacao.
+            group.style.cursor = "pointer";
+            group.setAttribute("tabindex", "0");
+            group.setAttribute("role", "button");
+            group.setAttribute(
+                "aria-label",
+                `Duplo clique para abrir o simulador operacional ${label}`
+            );
+
+            const openSimulator = event => {
+                if (event.target?.closest?.(".generator-command")) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                onOpenSimulator({ id });
+            };
+
+            // IMPORTANTE:
+            // O primeiro clique não pode chegar ao diagrama principal.
+            // Caso contrário o Renderer pode redesenhar o SVG entre o 1º e o 2º clique,
+            // destruindo o elemento e impedindo o evento nativo "dblclick".
+            group.addEventListener("click", event => {
+                if (event.target?.closest?.(".generator-command")) return;
+                event.preventDefault();
+                event.stopPropagation();
+            });
+
+            group.addEventListener("dblclick", openSimulator);
+
+            // Mantém acessibilidade pelo teclado.
+            group.addEventListener("keydown", event => {
+                if (event.key === "Enter" || event.key === " ") {
+                    openSimulator(event);
+                }
+            });
+
+            const simulatorTitle =
+                document.createElementNS(
+                    SVG_NS,
+                    "title"
+                );
+
+            simulatorTitle.textContent =
+                `Duplo clique para abrir o simulador operacional ${label}`;
+
+            group.appendChild(simulatorTitle);
+        }
 
         layer.appendChild(group);
 

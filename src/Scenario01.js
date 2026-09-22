@@ -1,5 +1,26 @@
 export const Scenario01 = {
-  name: 'CENARIO 02',
+  id: 'scenario1',
+  name: 'CENÁRIO 1',
+  description: 'FONTE DA UG-01 INDISPONÍVEL DEVIDO À MODERNIZAÇÃO',
+
+  engineProfile: {
+    operationalUnits: ['UG02', 'UG11', 'UG12'],
+    incomingSources: {
+      '107': 'UG12', '108': 'UG11', '109': 'UG02',
+      '110': 'UG11', '111': 'UG02', '112': 'UG12',
+    },
+    unitBreakers: {
+      UG01: [], UG02: ['109', '111'],
+      UG11: ['108', '110'], UG12: ['107', '112'],
+    },
+    normalBusSources: {
+      '1QP': ['UG12', 'UG11', 'UG02'],
+      '3QP': ['UG11', 'UG02', 'UG12'],
+    },
+    modernization: {
+      unitId: 'UG01', panelId: 'PSA-U01', breakerId: '1001',
+    },
+  },
 
   //==================================================
   // ESCALA DO CONJUNTO SUPERIOR
@@ -15,20 +36,20 @@ export const Scenario01 = {
 
   //==================================================
   // ESTADO DAS UNIDADES
-  // REV.22 = FONTE DA UG-02 INDISPONÃVEL
+  // REV.21 = FONTE DA UG-01 INDISPONIVEL
   //==================================================
 
   units: {
     UG01: {
-      available: true,
-      running: true,
-      maintenance: false,
-    },
-
-    UG02: {
       available: false,
       running: false,
       maintenance: true,
+    },
+
+    UG02: {
+      available: true,
+      running: true,
+      maintenance: false,
     },
 
     UG11: {
@@ -328,6 +349,9 @@ export const Scenario01 = {
           boxColor: '#3f7cff',
           boxStrokeColor: '#3f7cff',
 
+          available: false,
+          maintenance: true,
+
           topBreaker: '52-1',
           topBreakerX: 1605,
           bottomBreaker: '52-1',
@@ -375,8 +399,8 @@ export const Scenario01 = {
           x: 1930,
           boxColor: '#3f7cff',
 
-          available: false,
-          maintenance: true,
+          available: true,
+          maintenance: false,
 
           topBreaker: '52-2',
           bottomBreaker: '52-2',

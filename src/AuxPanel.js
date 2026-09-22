@@ -77,7 +77,12 @@ export class AuxPanel extends Equipment {
     const topY = y;
     const transformerY = y + 75;
     const incomingBreakerY = y + 155;
-    const panelY = y + 185;
+
+    // Ajuste vertical dos quadros auxiliares padrão.
+    // Mantém fontes, transformadores e DJs de entrada na posição original
+    // e desce somente o quadro, prolongando o trecho de alimentação.
+    const panelVerticalDrop = 70;
+    const panelY = y + 185 + panelVerticalDrop;
 
     const innerBusY = panelY + 55;
 
@@ -106,15 +111,30 @@ export class AuxPanel extends Equipment {
         ? colorRight
         : '#8a8a8a';
 
+    /*
+     * Alimentação de emergência pelo GAE-3.
+     * Quando o Engine sinaliza gaeEmergencyEnergized, o barramento do 8qV
+     * passa a ser representado pela fonte de emergência em ciano.
+     */
+    const gaeEmergencyEnergized =
+      data.gaeEmergencyEnergized === true;
+
+    const gaeEmergencyColor =
+      data.gaeEmergencyColor ?? '#00B8D9';
+
     const leftBusColor =
-      data.leftBusEnergized === false
-        ? '#8a8a8a'
-        : data.leftBusColor ?? leftIncomingColor;
+      gaeEmergencyEnergized
+        ? gaeEmergencyColor
+        : data.leftBusEnergized === false
+          ? '#8a8a8a'
+          : data.leftBusColor ?? leftIncomingColor;
 
     const rightBusColor =
-      data.rightBusEnergized === false
-        ? '#8a8a8a'
-        : data.rightBusColor ?? rightIncomingColor;
+      gaeEmergencyEnergized
+        ? gaeEmergencyColor
+        : data.rightBusEnergized === false
+          ? '#8a8a8a'
+          : data.rightBusColor ?? rightIncomingColor;
 
     const modePanelIds = [
       'AUX_7QS1',
@@ -1661,6 +1681,20 @@ export class AuxPanel extends Equipment {
       'aux-small-generator'
     );
 
+    const gaeRunning =
+      Boolean(data.breaker) &&
+      Engine.isGaeBreakerClosed?.(data.breaker) === true;
+
+    const gaeRunningColor =
+      data.gaeEmergencyColor ??
+      Engine.gaeEmergencyColor ??
+      '#00B8D9';
+
+    const generatorLineColor = gaeRunning ? gaeRunningColor : color;
+    const generatorCircleFill = gaeRunning ? gaeRunningColor : '#ffffff';
+    const generatorCircleStroke = gaeRunning ? gaeRunningColor : color;
+    const generatorTextColor = gaeRunning ? '#ffffff' : color;
+
     const breakerX = data.breakerX ?? x;
 
     const breakerY = data.breakerY ?? y - 150;
@@ -1678,7 +1712,7 @@ export class AuxPanel extends Equipment {
             `L ${breakerX} ${previousY}`,
             `L ${breakerX} ${breakerY - breakerSize / 2}`,
           ].join(' '),
-          color,
+          generatorLineColor,
           'none',
           1.55,
           {
@@ -1708,9 +1742,9 @@ export class AuxPanel extends Equipment {
           data.breakerState ?? Breaker.STATES.OPEN_AUTO
         ),
 
-        stroke: color,
+        stroke: generatorLineColor,
 
-        textColor: color,
+        textColor: generatorLineColor,
 
         showLabel: Boolean(data.breaker),
 
@@ -1752,7 +1786,7 @@ export class AuxPanel extends Equipment {
               `L ${itemX} ${previousY}`,
               `L ${itemX} ${itemY - itemSize / 2}`,
             ].join(' '),
-            color,
+            generatorLineColor,
             'none',
             1.55,
             {
@@ -1842,13 +1876,147 @@ export class AuxPanel extends Equipment {
       )
     );
 
-    generator.appendChild(this.circle(x, y, radius, color, '#ffffff', 1.8));
+    generator.appendChild(
+      this.circle(x, y, radius, generatorCircleStroke, generatorCircleFill, 1.8)
+    );
 
     generator.appendChild(
-      this.text(x, y + 7, label, 18, color, {
+      this.text(x, y + 7, label, 18, generatorTextColor, {
         weight: '700',
       })
     );
+
+    //==================================================
+    // CONTROLES RÁPIDOS DO GAE - LIGA/DES + MAN/AUT
+    //==================================================
+    if (data.breaker && data.showGaeControls !== false) {
+      const controls = this.group(
+        `aux-generator-${parentId}-gae-controls`,
+        'aux-gae-controls'
+      );
+
+      const controlButtonX = data.controlsX ?? (x - radius - 100);
+      const firstButtonY = data.controlsY ?? (y - 14);
+      const rowGap = 34;
+      const iconSize = 26;
+      const labelGap = 14;
+
+      const applyVisual = (body, icon, visual = {}) => {
+        body.setAttribute('fill', visual.fill ?? '#ffffff');
+        body.setAttribute('stroke', visual.stroke ?? this.COLORS.border);
+        icon.setAttribute('fill', visual.textColor ?? this.COLORS.text);
+        icon.textContent = visual.symbol ?? '';
+      };
+
+      const makeButton = (by, tag, getVisual, onClick, className) => {
+        const button = this.group('', className);
+
+        const body = this.rect(
+          controlButtonX - iconSize / 2,
+          by - iconSize / 2,
+          iconSize,
+          iconSize,
+          '#ffffff',
+          this.COLORS.border,
+          1.4
+        );
+        body.setAttribute('rx', 3);
+        body.setAttribute('ry', 3);
+
+        const icon = this.text(
+          controlButtonX,
+          by + 5,
+          '',
+          15,
+          this.COLORS.text,
+          { anchor: 'middle', weight: '700' }
+        );
+        icon.setAttribute('pointer-events', 'none');
+
+        const tagText = this.text(
+          controlButtonX + iconSize / 2 + labelGap,
+          by + 5,
+          tag,
+          14,
+          this.COLORS.text,
+          { anchor: 'start', weight: '700' }
+        );
+        tagText.setAttribute('pointer-events', 'none');
+
+        applyVisual(body, icon, getVisual());
+
+        button.appendChild(body);
+        button.appendChild(icon);
+        button.appendChild(tagText);
+        button.style.cursor = 'pointer';
+        button.setAttribute('pointer-events', 'all');
+
+        button.addEventListener('pointerdown', (event) => event.stopPropagation());
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClick();
+          applyVisual(body, icon, getVisual());
+        });
+
+        controls.appendChild(button);
+      };
+
+      const getBreakerClosed = () =>
+        Engine.isGaeBreakerClosed?.(data.breaker) === true;
+
+      const getGaeMode = () =>
+        Engine.getGaeOperationMode?.(data.breaker) ?? 'AUTO';
+
+      makeButton(
+        firstButtonY,
+        'LIGA/DES',
+        () =>
+          getBreakerClosed()
+            ? {
+                symbol: 'I',
+                fill: '#1f9d45',
+                stroke: '#1f9d45',
+                textColor: '#ffffff',
+              }
+            : {
+                symbol: 'O',
+                fill: '#ffffff',
+                stroke: '#7a858d',
+                textColor: this.COLORS.text,
+              },
+        () => {
+          const currentlyClosed = getBreakerClosed();
+          Engine.toggleGaeBreaker?.(data.breaker, !currentlyClosed);
+        },
+        'aux-gae-control-button'
+      );
+
+      makeButton(
+        firstButtonY + rowGap,
+        'MAN/AUT',
+        () =>
+          getGaeMode() === 'MANUAL'
+            ? {
+                symbol: 'M',
+                fill: '#d4a900',
+                stroke: '#d4a900',
+                textColor: '#ffffff',
+              }
+            : {
+                symbol: 'A',
+                fill: '#1f9d45',
+                stroke: '#1f9d45',
+                textColor: '#ffffff',
+              },
+        () => {
+          Engine.toggleGaeOperationMode?.(data.breaker);
+        },
+        'aux-gae-mode-button'
+      );
+
+      generator.appendChild(controls);
+    }
 
     group.appendChild(generator);
   }
@@ -1914,10 +2082,68 @@ export class AuxPanel extends Equipment {
       'AUX_8QV',
     ]);
 
-    if (!supportedPanelIds.has(String(data.id))) {
+    const panelId = String(data?.id ?? '');
+
+    if (!supportedPanelIds.has(panelId) || !group) {
       return null;
     }
 
+    /*
+     * CORREÇÃO DA ABERTURA DOS DIAGRAMAS DOS PAINÉIS AUXILIARES
+     *
+     * Antes, a área de clique era inserida como o PRIMEIRO filho do <g>.
+     * No SVG isso deixava a área de clique atrás das linhas, retângulos,
+     * barramentos e outros elementos do painel. Esses elementos podiam
+     * receber o clique antes da área transparente e o diagrama não abria.
+     *
+     * Agora a abertura fica vinculada ao próprio grupo do painel.
+     * Assim, qualquer clique no corpo/linhas/barramentos do painel sobe
+     * (bubble) até o grupo e abre o diagrama.
+     *
+     * Os comandos individuais dos DJs e o botão AUTO/MANUAL já usam
+     * stopPropagation(), portanto continuam independentes e NÃO abrem
+     * o diagrama quando forem comandados.
+     */
+
+    group.classList.add('aux-panel-detail-link');
+    group.style.cursor = 'pointer';
+    group.setAttribute('role', 'button');
+    group.setAttribute('tabindex', '0');
+    group.setAttribute(
+      'aria-label',
+      `Abrir diagrama interno do painel ${data.label ?? panelId}`
+    );
+
+    const openDetail = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (
+        !AuxDistributionDetailView ||
+        typeof AuxDistributionDetailView.open !== 'function'
+      ) {
+        console.error(
+          '[AuxPanel] AuxDistributionDetailView.open não está disponível.'
+        );
+        return;
+      }
+
+      AuxDistributionDetailView.open(data);
+    };
+
+    group.addEventListener('click', openDetail);
+
+    group.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        openDetail(event);
+      }
+    });
+
+    /*
+     * Área transparente auxiliar apenas para aumentar a região clicável
+     * do corpo do quadro. Ela fica atrás dos comandos e não recebe o
+     * listener diretamente; o clique sobe para o grupo.
+     */
     const hitArea = this.rect(
       bounds.x ?? 0,
       bounds.y ?? 0,
@@ -1933,40 +2159,9 @@ export class AuxPanel extends Equipment {
 
     hitArea.setAttribute('fill-opacity', '0');
     hitArea.setAttribute('pointer-events', 'all');
-    hitArea.setAttribute('role', 'button');
-    hitArea.setAttribute('tabindex', '0');
-    hitArea.setAttribute(
-      'aria-label',
-      `Abrir diagrama interno do painel ${data.label ?? data.id}`
-    );
-    hitArea.style.cursor = 'pointer';
-
-    const openDetail = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      AuxDistributionDetailView.open(data);
-    };
-
-    hitArea.addEventListener('pointerenter', () => {
-      hitArea.setAttribute('stroke', '#00a8e8');
-    });
-
-    hitArea.addEventListener('pointerleave', () => {
-      hitArea.setAttribute('stroke', 'transparent');
-    });
-
-    hitArea.addEventListener('pointerdown', (event) => {
-      event.stopPropagation();
-    });
-
-    hitArea.addEventListener('click', openDetail);
-    hitArea.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        openDetail(event);
-      }
-    });
 
     group.insertBefore(hitArea, group.firstChild);
+
     return hitArea;
   }
 

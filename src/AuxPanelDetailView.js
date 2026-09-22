@@ -19,6 +19,7 @@ const COLORS = {
   background: '#ffffff',
   panel: '#f8fafc',
   warning: '#ffd85c',
+  gae: '#00B8D9',
 };
 
 function escapeXml(value = '') {
@@ -57,6 +58,9 @@ export const AuxPanelDetailView = {
     normalClosed: true,
     reserveClosed: false,
     transferRemaining: 0,
+    engineEnergized: false,
+    engineSuppliedBy: null,
+    engineActiveSupply: null,
 
     /*
      * Modo de operação do diagrama detalhado.
@@ -132,7 +136,7 @@ export const AuxPanelDetailView = {
     backButton.addEventListener('click', () => this.close());
 
     const title = document.createElement('strong');
-    title.textContent = `SIMULADOR ${panel.title}`;
+    title.textContent = `${panel.title}`;
     Object.assign(title.style, {
       overflow: 'hidden',
       textAlign: 'center',
@@ -356,6 +360,9 @@ export const AuxPanelDetailView = {
       this.state.normalClosed = true;
       this.state.reserveClosed = false;
       this.state.transferRemaining = 0;
+      this.state.engineEnergized = false;
+      this.state.engineSuppliedBy = null;
+      this.state.engineActiveSupply = null;
     }
 
     if (redraw && this.main) {
@@ -406,6 +413,9 @@ export const AuxPanelDetailView = {
       reserveClosed: this.state.reserveClosed,
       transferRemaining: this.state.transferRemaining,
       operationMode: this.state.operationMode,
+      engineEnergized: this.state.engineEnergized,
+      engineSuppliedBy: this.state.engineSuppliedBy,
+      engineActiveSupply: this.state.engineActiveSupply,
     };
 
     this.state.normalAvailable = sharedState.normalAvailable;
@@ -417,11 +427,23 @@ export const AuxPanelDetailView = {
       sharedState.operationMode ?? 'AUTO'
     ).toUpperCase();
 
+    this.state.engineEnergized =
+      sharedState.energized === true;
+
+    this.state.engineSuppliedBy =
+      sharedState.suppliedBy ?? null;
+
+    this.state.engineActiveSupply =
+      sharedState.activeSupply ?? null;
+
     const changed =
       previous.normalClosed !== this.state.normalClosed ||
       previous.reserveClosed !== this.state.reserveClosed ||
       previous.transferRemaining !== this.state.transferRemaining ||
-      previous.operationMode !== this.state.operationMode;
+      previous.operationMode !== this.state.operationMode ||
+      previous.engineEnergized !== this.state.engineEnergized ||
+      previous.engineSuppliedBy !== this.state.engineSuppliedBy ||
+      previous.engineActiveSupply !== this.state.engineActiveSupply;
 
     if (redraw && previous.normalClosed && !this.state.normalClosed) {
       this.addEvent(
@@ -530,11 +552,37 @@ export const AuxPanelDetailView = {
   },
 
   getBusState() {
+    /*
+     * O Engine é a fonte principal do estado elétrico.
+     * Em CM-11 / CM-12, quando o GAE-2 estiver alimentando o quadro,
+     * load.energized continua verdadeiro mesmo com P0912 e R0912 sem tensão.
+     */
+    const suppliedBy =
+      String(this.state.engineSuppliedBy ?? '').toUpperCase();
+
+    const gaeSupply =
+      this.state.engineEnergized === true &&
+      (
+        suppliedBy.includes('GAE') ||
+        suppliedBy.includes('GD_2') ||
+        suppliedBy.includes('GD-2')
+      );
+
+    if (gaeSupply) {
+      return {
+        energized: true,
+        source: this.panel.emergency?.source ?? 'GAE-2',
+        color: Engine.gaeEmergencyColor ?? COLORS.gae,
+        emergency: true,
+      };
+    }
+
     if (this.state.normalClosed && this.state.normalAvailable) {
       return {
         energized: true,
         source: this.panel.normal.sourcePanel,
         color: this.panel.normal.color,
+        emergency: false,
       };
     }
 
@@ -543,6 +591,7 @@ export const AuxPanelDetailView = {
         energized: true,
         source: this.panel.reserve.sourcePanel,
         color: this.panel.reserve.color,
+        emergency: false,
       };
     }
 
@@ -550,6 +599,7 @@ export const AuxPanelDetailView = {
       energized: false,
       source: 'SEM FONTE',
       color: COLORS.off,
+      emergency: false,
     };
   },
 
@@ -582,8 +632,13 @@ export const AuxPanelDetailView = {
   drawDiagram() {
     const rowHeight = 45;
     const listTop = 116;
+    const extraGaeHeight =
+      ['CM-11', 'CM-12'].includes(String(this.panel?.id ?? ''))
+        ? 28
+        : 0;
+
     const contentHeight =
-      listTop + this.state.outgoing.length * rowHeight + 170;
+      listTop + this.state.outgoing.length * rowHeight + 170 + extraGaeHeight;
     const viewHeight = Math.max(2140, contentHeight);
 
     const svg = document.createElementNS(SVG_NS, 'svg');
@@ -730,8 +785,28 @@ export const AuxPanelDetailView = {
     const reserveBreakerY = 917;
     const reserveLineY = reserveBreakerY + 13;
     const delay = normalizeSeconds(this.panel.reserveDelaySeconds);
-    const normalAfter = this.state.normalClosed ? normal.color : COLORS.off;
-    const reserveAfter = this.state.reserveClosed ? reserve.color : COLORS.off;
+
+    const normalSourceColor =
+      this.state.normalAvailable ? normal.color : COLORS.off;
+
+    const reserveSourceColor =
+      this.state.reserveAvailable ? reserve.color : COLORS.off;
+
+    const normalFixedBreakerColor =
+      this.state.normalAvailable ? COLORS.closed : COLORS.text;
+
+    const reserveFixedBreakerColor =
+      this.state.reserveAvailable ? COLORS.closed : COLORS.text;
+
+    const normalAfter =
+      this.state.normalClosed && this.state.normalAvailable
+        ? normal.color
+        : COLORS.off;
+
+    const reserveAfter =
+      this.state.reserveClosed && this.state.reserveAvailable
+        ? reserve.color
+        : COLORS.off;
     const reserveStatus = this.state.reserveClosed
       ? 'FECHADO \u2022 ALIMENTANDO'
       : this.state.transferRemaining > 0
@@ -744,22 +819,22 @@ export const AuxPanelDetailView = {
                   COLORS.text
                 }">${escapeXml(normal.qp)}</text>
                 <line x1="260" y1="338" x2="260" y2="366" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="3" />
                 <rect x="246" y="366" width="28" height="28" fill="${
-                  COLORS.closed
+                  normalFixedBreakerColor
                 }" />
                 <text x="288" y="386" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="${
                   COLORS.text
                 }">${escapeXml(normal.sourceBreaker)}</text>
                 <line x1="260" y1="394" x2="260" y2="433" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="3" />
                 <circle cx="260" cy="450" r="17" fill="#ffffff" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="2" />
                 <circle cx="260" cy="470" r="17" fill="#ffffff" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="2" />
                 <text x="232" y="454" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${
                   COLORS.text
@@ -768,46 +843,46 @@ export const AuxPanelDetailView = {
                   COLORS.muted
                 }">${escapeXml(normal.transformerVoltage)}</text>
                 <line x1="260" y1="487" x2="260" y2="515" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="3" />
                 <rect x="248" y="515" width="24" height="24" fill="${
-                  COLORS.closed
+                  normalFixedBreakerColor
                 }" />
                 <text x="286" y="533" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${
                   COLORS.text
                 }">${escapeXml(normal.transformerBreaker)}</text>
                 <line x1="260" y1="539" x2="260" y2="569" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="3" />
                 <rect x="130" y="569" width="260" height="56" fill="#ffffff" stroke="${
                   COLORS.text
                 }" stroke-width="1.5" />
                 <line x1="155" y1="597" x2="365" y2="597" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="3" />
                 <text x="115" y="604" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" fill="${
                   COLORS.text
                 }">${escapeXml(normal.sourcePanel)}</text>
                 <line x1="260" y1="625" x2="260" y2="660" stroke="${
-                  normal.color
+                  normalSourceColor
                 }" stroke-width="3" />
                 <rect x="247" y="660" width="26" height="26" fill="${
-                  COLORS.closed
+                  normalFixedBreakerColor
                 }" />
                 <text x="231" y="679" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="${
                   COLORS.text
                 }">${escapeXml(normal.feederBreaker)}</text>
                 <line x1="${sourceX}" y1="686" x2="${sourceX}" y2="${normalLineY}" stroke="${
-      normal.color
+      normalSourceColor
     }" stroke-width="3" />
                 <line x1="${sourceX}" y1="${normalLineY}" x2="${
       incomingX - 13
-    }" y2="${normalLineY}" stroke="${normal.color}" stroke-width="3" />
+    }" y2="${normalLineY}" stroke="${normalSourceColor}" stroke-width="3" />
                 ${this.incomingBreakerSvg({
                   x: incomingX,
                   y: normalBreakerY,
                   closed: this.state.normalClosed,
-                  color: normal.color,
+                  color: normalSourceColor,
                   id: normal.incomingBreaker,
                   action: 'incoming-normal',
                   status: this.state.normalClosed ? 'FECHADO' : 'ABERTO',
@@ -820,12 +895,12 @@ export const AuxPanelDetailView = {
             <g aria-label="Alimenta\u00E7\u00E3o reserva">
                 <line x1="${sourceX}" y1="${reserveLineY}" x2="${
       incomingX - 13
-    }" y2="${reserveLineY}" stroke="${reserve.color}" stroke-width="3" />
+    }" y2="${reserveLineY}" stroke="${reserveSourceColor}" stroke-width="3" />
                 ${this.incomingBreakerSvg({
                   x: incomingX,
                   y: reserveBreakerY,
                   closed: this.state.reserveClosed,
-                  color: reserve.color,
+                  color: reserveSourceColor,
                   id: reserve.incomingBreaker,
                   action: 'incoming-reserve',
                   status: reserveStatus,
@@ -834,43 +909,43 @@ export const AuxPanelDetailView = {
                   incomingX + 13
                 }" y1="${reserveLineY}" x2="${trunkX}" y2="${reserveLineY}" stroke="${reserveAfter}" stroke-width="3" />
                 <line x1="${sourceX}" y1="${reserveLineY}" x2="${sourceX}" y2="987" stroke="${
-      reserve.color
+      reserveSourceColor
     }" stroke-width="3" />
                 <rect x="247" y="987" width="26" height="26" fill="${
-                  COLORS.closed
+                  reserveFixedBreakerColor
                 }" />
                 <text x="231" y="1006" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="${
                   COLORS.text
                 }">${escapeXml(reserve.feederBreaker)}</text>
                 <line x1="260" y1="1013" x2="260" y2="1044" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="3" />
                 <rect x="130" y="1044" width="260" height="56" fill="#ffffff" stroke="${
                   COLORS.text
                 }" stroke-width="1.5" />
                 <line x1="155" y1="1072" x2="365" y2="1072" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="3" />
                 <text x="115" y="1079" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800" fill="${
                   COLORS.text
                 }">${escapeXml(reserve.sourcePanel)}</text>
                 <line x1="260" y1="1100" x2="260" y2="1128" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="3" />
                 <rect x="248" y="1128" width="24" height="24" fill="${
-                  COLORS.closed
+                  reserveFixedBreakerColor
                 }" />
                 <text x="286" y="1146" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${
                   COLORS.text
                 }">${escapeXml(reserve.transformerBreaker)}</text>
                 <line x1="260" y1="1152" x2="260" y2="1182" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="3" />
                 <circle cx="260" cy="1199" r="17" fill="#ffffff" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="2" />
                 <circle cx="260" cy="1219" r="17" fill="#ffffff" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="2" />
                 <text x="232" y="1203" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${
                   COLORS.text
@@ -879,16 +954,16 @@ export const AuxPanelDetailView = {
                   COLORS.muted
                 }">${escapeXml(reserve.transformerVoltage)}</text>
                 <line x1="260" y1="1236" x2="260" y2="1268" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="3" />
                 <rect x="246" y="1268" width="28" height="28" fill="${
-                  COLORS.closed
+                  reserveFixedBreakerColor
                 }" />
                 <text x="288" y="1288" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="${
                   COLORS.text
                 }">${escapeXml(reserve.sourceBreaker)}</text>
                 <line x1="260" y1="1296" x2="260" y2="1323" stroke="${
-                  reserve.color
+                  reserveSourceColor
                 }" stroke-width="3" />
                 <text x="260" y="1346" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="800" fill="${
                   COLORS.text
@@ -963,16 +1038,170 @@ export const AuxPanelDetailView = {
   },
 
   outgoingSvg(bus, listTop, rowHeight) {
+    const emergency = this.panel.emergency;
+
     const rows = this.state.outgoing
       .map((item, index) => {
-        const y = listTop + index * rowHeight;
+        /*
+         * Ajuste fino CM-11 / CM-12:
+         * cria um pequeno espaço extra em torno da entrada do GAE-2,
+         * reproduzindo melhor a disposição do diagrama original.
+         *
+         * - linha do GAE-2: +8 px
+         * - linhas abaixo do GAE-2: +16 px
+         *
+         * Assim o GAE fica visualmente no meio entre 3E e 3F,
+         * sem encostar nas identificações.
+         */
+        const gaeIndex =
+          this.state.outgoing.findIndex(row => row.label === 'GAE-2');
+
+        const gaeSpacing =
+          gaeIndex >= 0
+            ? index === gaeIndex
+              ? 12
+              : index > gaeIndex
+                ? 24
+                : 0
+            : 0;
+
+        const y = listTop + index * rowHeight + gaeSpacing;
+
+        /*
+         * CM-11 / CM-12:
+         * o item 2A não é uma carga. É a entrada do GAE-2.
+         *
+         * CM-11: barramento <- 1752-250 <- 1752-254 <- GAE-2
+         * CM-12: barramento <- 1752-251 <- 1752-254 <- GAE-2
+         */
+        if (
+          item.label === 'GAE-2' &&
+          emergency?.primaryBreaker &&
+          emergency?.couplingBreaker
+        ) {
+          const primaryClosed =
+            Engine.isGaeBreakerClosed?.(emergency.primaryBreaker) === true;
+
+          const couplingClosed =
+            Engine.isGaeBreakerClosed?.(emergency.couplingBreaker) === true;
+
+          const gaeColor =
+            Engine.gaeEmergencyColor ?? COLORS.gae;
+
+          const sourceLineColor =
+            primaryClosed ? gaeColor : COLORS.off;
+
+          const busLineColor =
+            primaryClosed && couplingClosed
+              ? gaeColor
+              : COLORS.off;
+
+          const primaryFill =
+            primaryClosed ? COLORS.closed : COLORS.open;
+
+          const couplingFill =
+            couplingClosed ? COLORS.closed : COLORS.open;
+
+          const generatorFill =
+            primaryClosed ? gaeColor : COLORS.open;
+
+          const generatorStroke =
+            primaryClosed ? gaeColor : COLORS.text;
+
+          const generatorText =
+            primaryClosed ? '#ffffff' : COLORS.text;
+
+          return `
+            <g aria-label="Alimentação de emergência ${escapeXml(emergency.source ?? 'GAE-2')}">
+              <text x="590" y="${y + 20}" text-anchor="end"
+                font-family="Segoe UI, Arial, sans-serif"
+                font-size="14" font-weight="800"
+                fill="${COLORS.text}">${escapeXml(item.id)}</text>
+
+              <line x1="610" y1="${y + 15}" x2="710" y2="${y + 15}"
+                stroke="${busLineColor}" stroke-width="2.8" />
+
+              <g data-action="gae-coupling" role="button" tabindex="0"
+                 aria-label="Comandar ${escapeXml(emergency.couplingLabel ?? emergency.couplingBreaker)}"
+                 style="cursor:pointer">
+                <rect x="710" y="${y + 2}" width="26" height="26"
+                  fill="${couplingFill}"
+                  stroke="${couplingClosed ? COLORS.closed : COLORS.text}"
+                  stroke-width="1.7" />
+                ${
+                  couplingClosed
+                    ? ''
+                    : `<line x1="714" y1="${y + 24}" x2="732" y2="${y + 6}"
+                        stroke="${COLORS.text}" stroke-width="1.8" />`
+                }
+                <text x="723" y="${y - 8}" text-anchor="middle"
+                  font-family="Segoe UI, Arial, sans-serif"
+                  font-size="13" font-weight="800"
+                  fill="${COLORS.text}">${escapeXml(emergency.couplingLabel)}</text>
+                <rect x="692" y="${y - 28}" width="64" height="70"
+                  fill="transparent" pointer-events="all" />
+              </g>
+
+              <line x1="736" y1="${y + 15}" x2="870" y2="${y + 15}"
+                stroke="${sourceLineColor}" stroke-width="2.8" />
+
+              <g data-action="gae-primary" role="button" tabindex="0"
+                 aria-label="Comandar ${escapeXml(emergency.primaryLabel ?? emergency.primaryBreaker)}"
+                 style="cursor:pointer">
+                <rect x="870" y="${y + 2}" width="26" height="26"
+                  fill="${primaryFill}"
+                  stroke="${primaryClosed ? COLORS.closed : COLORS.text}"
+                  stroke-width="1.7" />
+                ${
+                  primaryClosed
+                    ? ''
+                    : `
+                      <line x1="874" y1="${y + 6}" x2="892" y2="${y + 24}"
+                        stroke="${COLORS.text}" stroke-width="1.8" />
+                      <line x1="892" y1="${y + 6}" x2="874" y2="${y + 24}"
+                        stroke="${COLORS.text}" stroke-width="1.8" />
+                    `
+                }
+                <text x="883" y="${y - 8}" text-anchor="middle"
+                  font-family="Segoe UI, Arial, sans-serif"
+                  font-size="13" font-weight="800"
+                  fill="${COLORS.text}">${escapeXml(emergency.primaryLabel)}</text>
+                <rect x="852" y="${y - 28}" width="64" height="70"
+                  fill="transparent" pointer-events="all" />
+              </g>
+
+              <line x1="896" y1="${y + 15}" x2="984" y2="${y + 15}"
+                stroke="${sourceLineColor}" stroke-width="2.8" />
+
+              <circle cx="1020" cy="${y + 15}" r="31"
+                fill="${generatorFill}"
+                stroke="${generatorStroke}" stroke-width="2.2" />
+              <circle cx="1020" cy="${y + 15}" r="25"
+                fill="none"
+                stroke="${primaryClosed ? '#ffffff' : COLORS.text}"
+                stroke-width="1.4" />
+              <text x="1020" y="${y + 20}" text-anchor="middle"
+                font-family="Segoe UI, Arial, sans-serif"
+                font-size="13" font-weight="900"
+                fill="${generatorText}">${escapeXml(emergency.source ?? 'GAE-2')}</text>
+
+              <text x="1070" y="${y + 20}"
+                font-family="Segoe UI, Arial, sans-serif"
+                font-size="13" font-weight="800"
+                fill="${primaryClosed ? gaeColor : COLORS.muted}">
+                ${primaryClosed ? 'GERADOR EM OPERAÇÃO' : 'GERADOR PARADO'}
+              </text>
+            </g>
+          `;
+        }
+
         const closedColor =
           bus.energized && item.closed ? COLORS.closed : COLORS.text;
         const lineColor = bus.energized && item.closed ? bus.color : COLORS.off;
         const status = item.closed
           ? bus.energized
             ? 'LIGADO'
-            : 'FECHADO \u2022 SEM TENS\u00C3O'
+            : 'FECHADO • SEM TENSÃO'
           : 'ABERTO';
 
         return `
@@ -1036,7 +1265,7 @@ export const AuxPanelDetailView = {
     return `
             <text x="1065" y="70" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="25" font-weight="900" fill="${
               COLORS.text
-            }">SA\u00CDDAS DO ${escapeXml(this.panel.title)}</text>
+            }">SAÍDAS DO ${escapeXml(this.panel.title)}</text>
             <text x="1065" y="94" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="${
               COLORS.muted
             }">Clique em um disjuntor para abrir ou fechar individualmente</text>
@@ -1176,6 +1405,22 @@ export const AuxPanelDetailView = {
 
         if (action === 'outgoing') {
           this.toggleOutgoing(element.getAttribute('data-breaker-id'));
+          return;
+        }
+
+        if (action === 'gae-coupling') {
+          const breakerId = this.panel?.emergency?.couplingBreaker;
+          if (breakerId) {
+            Engine.toggleGaeBreaker?.(breakerId);
+          }
+          return;
+        }
+
+        if (action === 'gae-primary') {
+          const breakerId = this.panel?.emergency?.primaryBreaker;
+          if (breakerId) {
+            Engine.toggleGaeBreaker?.(breakerId);
+          }
         }
       };
 

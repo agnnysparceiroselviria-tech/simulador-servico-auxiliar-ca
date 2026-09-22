@@ -1,5 +1,8 @@
 // Engine.js
-import { Scenario01 } from './Scenario01.js';
+import {
+  ActiveScenario as Scenario01,
+  loadActiveScenario,
+} from './ScenarioActive.js';
 import { EventLog } from './EventLog.js';
 import { Breaker } from './Breaker.js';
 
@@ -23,6 +26,21 @@ export const Engine = {
   auxPanelTransferTimers: new Map(),
 
   auxPanelTransferDeadlines: new Map(),
+
+  // Temporização de partida automática dos GAEs durante blackout.
+  gaeStartTimers: new Map(),
+  gaeStartDeadlines: new Map(),
+  gaeStartDelay: 10000,
+  gaeEmergencyColor: '#00B8D9',
+
+  /*
+   * Simulação de BLACKOUT pelo botão do topo.
+   * Temporariamente configurado para desligar uma UG a cada 1 segundo.
+   * Esse valor ficará centralizado aqui para facilitar o ajuste posterior.
+   */
+  blackoutStepDelay: 1000,
+  blackoutTimers: [],
+  blackoutSimulationRunning: false,
 
   transferDelay: 1300,
 
@@ -65,9 +83,24 @@ export const Engine = {
 
   unitBreakers: {
     UG01: ['107', '111'],
-    UG02: [],
+    UG02: ['109'],
     UG11: ['108', '110'],
-    UG12: ['109', '112'],
+    UG12: ['112'],
+  },
+
+  /*
+   * Condições mínimas de alimentação auxiliar para permitir a partida
+   * das UGs após um blackout.
+   *
+   * A verificação é feita pelo estado REAL de energização do respectivo
+   * CCM/CM. Assim, se um GAE falhar e não conseguir energizar o quadro,
+   * somente a UG dependente daquele quadro permanece bloqueada.
+   */
+  unitStartAuxiliaryRequirements: {
+    UG01: ['CCM-U01'],
+    UG02: ['CM-2'],
+    UG11: ['CM-11'],
+    UG12: ['CM-12'],
   },
   manualIncomingBreakers: {
     107: {
@@ -84,7 +117,7 @@ export const Engine = {
 
     109: {
       panelId: '1QP',
-      source: 'UG12',
+      source: 'UG02',
       busIndex: 2,
     },
 
@@ -120,6 +153,7 @@ export const Engine = {
   },
   unitColors: {
     UG01: '#3f7cff',
+    UG02: '#e4c24a',
     UG11: '#ff44dd',
     UG12: '#44dd55',
     SE138_1QP: '#f28c28',
@@ -191,7 +225,7 @@ export const Engine = {
    * 1QP:
    * Barra 1 = UG01
    * Barra 2 = UG11
-   * Barra 3 = UG12
+   * Barra 3 = UG02
    *
    * 3QP:
    * Barra 1 = UG11
@@ -199,7 +233,7 @@ export const Engine = {
    * Barra 3 = UG12
    */
   normalBusSources: {
-    '1QP': ['UG01', 'UG11', 'UG12'],
+    '1QP': ['UG01', 'UG11', 'UG02'],
 
     '3QP': ['UG11', 'UG01', 'UG12'],
   },
@@ -286,6 +320,8 @@ export const Engine = {
      * antes da captura do estado normal; caso contrario, o botao NORMAL
      * restauraria os DJs 107 a 112 com o estado incorreto do Scenario01.
      */
+    this.applyScenarioProfile();
+
     this.applyNormalIncomingBreakerStates();
 
     this.captureNormalState();
@@ -308,6 +344,8 @@ export const Engine = {
     this.pcaTransferDeadlines.clear();
 
     this.cancelAllAuxPanelTransfers();
+
+    this.cancelAllGaeAutomaticStarts();
 
     if (this.mainPanelModeChangeHandler) {
       window.removeEventListener(
@@ -338,6 +376,98 @@ export const Engine = {
     }
 
     return JSON.parse(JSON.stringify(source));
+  },
+
+  applyScenarioProfile() {
+    const profile = Scenario01.engineProfile ?? {};
+
+    this.operationalUnits = Array.isArray(profile.operationalUnits)
+      ? [...profile.operationalUnits]
+      : ['UG01', 'UG02', 'UG11', 'UG12'];
+
+    if (profile.unitBreakers) {
+      this.unitBreakers = this.cloneState(profile.unitBreakers);
+    }
+
+    if (profile.normalBusSources) {
+      this.normalBusSources = this.cloneState(profile.normalBusSources);
+    }
+
+    const incomingSources = profile.incomingSources ?? {};
+
+    Object.entries(this.manualIncomingBreakers).forEach(
+      ([breakerId, config]) => {
+        if (incomingSources[breakerId]) {
+          config.source = incomingSources[breakerId];
+        }
+      }
+    );
+
+    const sourcePanels = {
+      UG01: { panelId: 'PSA-U01', breakerId: '1001' },
+      UG02: { panelId: '1QD-2', breakerId: '103' },
+      UG11: { panelId: '3QD-11', breakerId: '104' },
+      UG12: { panelId: '3QD-12', breakerId: '106' },
+    };
+
+    const rebuiltPlans = {};
+
+    Object.entries(sourcePanels).forEach(([unitId, local]) => {
+      const requirements = [];
+
+      Object.entries(this.normalBusSources).forEach(([panelId, sources]) => {
+        sources.forEach((source, busIndex) => {
+          if (source !== unitId) return;
+
+          const incomingIds =
+            panelId === '1QP' ? ['107', '108', '109'] : ['110', '111', '112'];
+
+          const couplerIds =
+            panelId === '1QP' ? ['101', '102'] : ['103', '104'];
+
+          requirements.push({
+            couplerId: couplerIds[busIndex === 2 ? 1 : 0],
+            mainPanelId: panelId,
+            busIndex,
+            incomingBreakerId: incomingIds[busIndex],
+          });
+        });
+      });
+
+      rebuiltPlans[unitId] = {
+        localPanelId: local.panelId,
+        localBreakerId: local.breakerId,
+        requirements,
+      };
+    });
+
+    this.restorationPlans = rebuiltPlans;
+  },
+
+  loadScenario(source) {
+    if (!source) return false;
+
+    this.cancelBlackoutSimulation();
+    this.cancelTransferTimer();
+    this.cancelAllAuxPanelTransfers();
+    this.cancelAllGaeAutomaticStarts();
+
+    loadActiveScenario(source);
+    this.applyScenarioProfile();
+
+    this.normalScenarioState = null;
+    this.resetAllBreakerPositions();
+    this.applyNormalIncomingBreakerStates();
+    this.captureNormalState();
+    this.propagateColors();
+
+    EventLog.add('SISTEMA', `${Scenario01.name} CARREGADO`, 'info');
+
+    this.notifyStateChange('scenario-loaded', {
+      scenarioId: Scenario01.id,
+    });
+
+    return true;
   },
 
   captureNormalState() {
@@ -413,9 +543,15 @@ export const Engine = {
      * A UG-02 está em modernização. O DJ 103 do 1QD-2 deve permanecer
      * desligado, desenergizado e indisponível para comando.
      */
-    const modernizationPanel = this.getDistributionPanel('1QD-2');
+    const modernization = Scenario01.engineProfile?.modernization;
+    const modernizationPanel = modernization
+      ? this.getDistributionPanel(modernization.panelId)
+      : null;
 
-    if (modernizationPanel && Scenario01.units?.UG02?.maintenance === true) {
+    if (
+      modernizationPanel &&
+      Scenario01.units?.[modernization.unitId]?.maintenance === true
+    ) {
       modernizationPanel.closed = false;
       modernizationPanel.breakerState = Breaker.STATES.OPEN;
       modernizationPanel.outputEnergized = false;
@@ -884,7 +1020,7 @@ export const Engine = {
 
     let sourceAvailable = false;
 
-    if (source === 'UG01' || source === 'UG11' || source === 'UG12') {
+    if (this.getUnitState(source)) {
       sourceAvailable = this.isUnitRunning(source);
     } else {
       /*
@@ -1017,13 +1153,13 @@ export const Engine = {
   },
 
   getRunningUnits() {
-    return ['UG01', 'UG11', 'UG12'].filter((unitId) =>
-      this.isUnitRunning(unitId)
+    return (this.operationalUnits ?? ['UG01', 'UG02', 'UG11', 'UG12']).filter(
+      (unitId) => this.isUnitRunning(unitId)
     );
   },
 
   getStoppedUnits() {
-    return ['UG01', 'UG11', 'UG12'].filter(
+    return (this.operationalUnits ?? ['UG01', 'UG02', 'UG11', 'UG12']).filter(
       (unitId) => !this.isUnitRunning(unitId)
     );
   },
@@ -1413,6 +1549,7 @@ export const Engine = {
       '#e4c24a',
       '#7a858d',
       '#8a8a8a',
+      '#00b8d9',
     ].includes(normalized);
   },
 
@@ -3509,6 +3646,15 @@ export const Engine = {
     this.updateAuxPanelTransfers(feederSupplyMap);
 
     this.updatePcaLoadTransfers(feederSupplyMap);
+
+    /*
+     * A lógica dos GAEs é aplicada por último.
+     * Assim a alimentação de emergência prevalece visual e eletricamente
+     * sobre os estados sem tensão calculados a partir das fontes normais.
+     */
+    this.updateGaeAutomaticBlackout();
+
+    this.applyGaeEmergencySupplyOverrides();
   },
 
   notifyStateChange(reason, detail = {}) {
@@ -3691,14 +3837,24 @@ export const Engine = {
       return false;
     }
 
-    if (panelId === '1QD-2' && Scenario01.units?.UG02?.maintenance === true) {
+    const modernization = Scenario01.engineProfile?.modernization;
+
+    if (
+      modernization?.panelId === panelId &&
+      Scenario01.units?.[modernization.unitId]?.maintenance === true
+    ) {
       this.showOperationMessage(
-        'COMANDO BLOQUEADO\nO DJ 103 do 1QD-2 está indisponível devido à modernização da UG-02.'
+        `COMANDO BLOQUEADO\nO DJ ${
+          modernization.breakerId
+        } do ${panelId} está indisponível devido à modernização da ${modernization.unitId.replace(
+          'UG',
+          'UG-'
+        )}.`
       );
 
       EventLog.add(
-        'DJ 103',
-        'COMANDO BLOQUEADO - UG-02 EM MODERNIZACAO',
+        `DJ ${modernization.breakerId}`,
+        `COMANDO BLOQUEADO - ${modernization.unitId} EM MODERNIZACAO`,
         'warning'
       );
 
@@ -4121,6 +4277,7 @@ export const Engine = {
     const gaeBreakerIds = new Set([
       // GAE provisório - CF-pCA-P14
       '52-1',
+      '21103',
 
       // GAE COG
       '52-G',
@@ -4201,6 +4358,408 @@ export const Engine = {
     return null;
   },
 
+  getGaeControlConfig(breakerId) {
+    const id = String(breakerId ?? '').trim();
+
+    const configs = [
+      {
+        id: 'GAE_PROV',
+        label: 'GD PROV',
+        primaryBreaker: '52-1',
+        breakers: ['52-1', '21103'],
+        couplingBreakers: ['21103'],
+        startDelay: 10000,
+      },
+      {
+        id: 'GAE_COG',
+        label: 'GD COG',
+        primaryBreaker: '52-G',
+        breakers: ['52-G', '52-2A', '52-2B'],
+        couplingBreakers: ['52-2A', '52-2B'],
+        startDelay: 10000,
+      },
+      {
+        id: 'GAE_2',
+        label: 'GD-2',
+        primaryBreaker: '254',
+        breakers: ['254', '250', '251'],
+        couplingBreakers: ['250', '251'],
+        startDelay: 10000,
+      },
+      {
+        id: 'GAE_3',
+        label: 'GD-3',
+        primaryBreaker: '252',
+        breakers: ['252', '255'],
+        couplingBreakers: ['255'],
+        startDelay: 10000,
+      },
+    ];
+
+    return configs.find((config) => config.breakers.includes(id)) ?? null;
+  },
+
+  getGaeOperationMode(breakerId) {
+    const config = this.getGaeControlConfig(breakerId);
+
+    if (!config) {
+      return 'AUTO';
+    }
+
+    const primary = this.getGaeBreaker(config.primaryBreaker);
+
+    const rawMode =
+      primary?.target?.operationMode ??
+      primary?.panel?.gaeOperationModes?.[config.id] ??
+      'AUTO';
+
+    return String(rawMode).toUpperCase() === 'MANUAL' ? 'MANUAL' : 'AUTO';
+  },
+
+  setGaeOperationMode(breakerId, mode) {
+    const config = this.getGaeControlConfig(breakerId);
+
+    if (!config) {
+      return false;
+    }
+
+    const normalizedMode =
+      String(mode ?? '').toUpperCase() === 'MANUAL' ? 'MANUAL' : 'AUTO';
+
+    const primary = this.getGaeBreaker(config.primaryBreaker);
+
+    if (!primary) {
+      return false;
+    }
+
+    primary.target.operationMode = normalizedMode;
+
+    if (primary.panel) {
+      primary.panel.gaeOperationModes ??= {};
+      primary.panel.gaeOperationModes[config.id] = normalizedMode;
+    }
+
+    // Mantém todos os objetos elétricos do mesmo GAE com o mesmo modo.
+    config.breakers.forEach((id) => {
+      const match = this.getGaeBreaker(id);
+      if (match?.target) {
+        match.target.operationMode = normalizedMode;
+      }
+    });
+
+    /*
+     * MANUAL cancela imediatamente qualquer partida automática pendente.
+     * AUTO, se já houver blackout, inicia a temporização de 10 s.
+     */
+    if (normalizedMode === 'MANUAL') {
+      this.cancelGaeAutomaticStart(config.id);
+    } else {
+      this.updateGaeAutomaticBlackout();
+    }
+
+    EventLog.add(
+      config.label,
+      `GAE COLOCADO EM ${
+        normalizedMode === 'MANUAL' ? 'MANUAL' : 'AUTOMATICO'
+      }`,
+      normalizedMode === 'MANUAL' ? 'warning' : 'info'
+    );
+
+    this.notifyStateChange('gae-mode-changed', {
+      gaeId: config.id,
+      gaeLabel: config.label,
+      breakerId: String(breakerId),
+      mode: normalizedMode,
+    });
+
+    return true;
+  },
+
+  toggleGaeOperationMode(breakerId) {
+    const current = this.getGaeOperationMode(breakerId);
+    return this.setGaeOperationMode(
+      breakerId,
+      current === 'MANUAL' ? 'AUTO' : 'MANUAL'
+    );
+  },
+
+  isBlackoutForGae() {
+    const units =
+      this.operationalUnits ?? ['UG01', 'UG02', 'UG11', 'UG12'];
+
+    return units.every((unitId) => !this.isUnitRunning(unitId));
+  },
+
+  getAllGaeControlConfigs() {
+    return ['52-1', '52-G', '254', '252']
+      .map((breakerId) => this.getGaeControlConfig(breakerId))
+      .filter(Boolean);
+  },
+
+  cancelGaeAutomaticStart(gaeId) {
+    const key = String(gaeId ?? '');
+    const timer = this.gaeStartTimers.get(key);
+
+    if (timer != null) {
+      window.clearTimeout(timer);
+    }
+
+    this.gaeStartTimers.delete(key);
+    this.gaeStartDeadlines.delete(key);
+  },
+
+  cancelAllGaeAutomaticStarts() {
+    this.gaeStartTimers.forEach((timer) => {
+      window.clearTimeout(timer);
+    });
+
+    this.gaeStartTimers.clear();
+    this.gaeStartDeadlines.clear();
+  },
+
+  setGaeBreakerStateAutomatic(breakerId, closed) {
+    const match = this.getGaeBreaker(breakerId);
+
+    if (!match?.target) {
+      return false;
+    }
+
+    if (closed && !this.isBreakerInserted(breakerId, breakerId)) {
+      EventLog.add(
+        `DJ ${breakerId}`,
+        'FECHAMENTO AUTOMATICO BLOQUEADO - DISJUNTOR EXTRAIDO',
+        'warning'
+      );
+      return false;
+    }
+
+    const state = closed ? Breaker.STATES.CLOSED : Breaker.STATES.OPEN_AUTO;
+
+    match.target.closed = closed === true;
+    match.target.state = state;
+    match.target.breakerState = state;
+
+    if (match.kind === 'pca-generator' || match.kind === 'aux-generator') {
+      match.target.running = closed === true;
+      match.target.energized = closed === true;
+      match.target.available = true;
+    } else {
+      match.target.energized = closed === true;
+    }
+
+    return true;
+  },
+
+  startGaeAutomatically(config) {
+    if (!config || !this.isBlackoutForGae()) {
+      return false;
+    }
+
+    if (this.getGaeOperationMode(config.primaryBreaker) !== 'AUTO') {
+      return false;
+    }
+
+    /*
+     * Primeiro entra o grupo gerador e, na mesma sequência automática,
+     * fecham os DJs que conectam o GAE aos quadros que ele atende.
+     */
+    this.setGaeBreakerStateAutomatic(config.primaryBreaker, true);
+
+    for (const breakerId of config.couplingBreakers ?? []) {
+      this.setGaeBreakerStateAutomatic(breakerId, true);
+    }
+
+    EventLog.add(
+      config.label,
+      'PARTIDA AUTOMATICA CONCLUIDA - BLACKOUT',
+      'info'
+    );
+
+    this.applyGaeEmergencySupplyOverrides();
+
+    this.notifyStateChange('gae-automatic-start-completed', {
+      gaeId: config.id,
+      gaeLabel: config.label,
+      breakers: [...config.breakers],
+      delay: config.startDelay ?? this.gaeStartDelay,
+    });
+
+    return true;
+  },
+
+  stopGaeAutomatically(config, reason = 'RETORNO DE FONTE NORMAL') {
+    if (!config) {
+      return false;
+    }
+
+    /*
+     * Ao retornar qualquer UG, um GAE que permaneça em AUTO é retirado
+     * automaticamente para evitar paralelismo com a alimentação normal.
+     * Em MANUAL, o estado é preservado para decisão do operador.
+     */
+    if (this.getGaeOperationMode(config.primaryBreaker) !== 'AUTO') {
+      return false;
+    }
+
+    let changed = false;
+
+    for (const breakerId of [
+      ...(config.couplingBreakers ?? []),
+      config.primaryBreaker,
+    ]) {
+      if (this.isGaeBreakerClosed(breakerId)) {
+        this.setGaeBreakerStateAutomatic(breakerId, false);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      EventLog.add(
+        config.label,
+        `DESLIGADO AUTOMATICAMENTE - ${reason}`,
+        'info'
+      );
+
+      this.notifyStateChange('gae-automatic-stop', {
+        gaeId: config.id,
+        gaeLabel: config.label,
+        reason,
+      });
+    }
+
+    return changed;
+  },
+
+  scheduleGaeAutomaticStart(config) {
+    if (!config) {
+      return false;
+    }
+
+    const key = String(config.id);
+
+    if (
+      this.gaeStartTimers.has(key) ||
+      this.isGaeBreakerClosed(config.primaryBreaker)
+    ) {
+      return true;
+    }
+
+    const delay = config.startDelay ?? this.gaeStartDelay;
+
+    EventLog.add(
+      config.label,
+      `BLACKOUT - PARTIDA AUTOMATICA EM ${this.formatMilliseconds(delay)}`,
+      'warning'
+    );
+
+    const timer = window.setTimeout(() => {
+      this.gaeStartTimers.delete(key);
+      this.gaeStartDeadlines.delete(key);
+
+      if (
+        this.isBlackoutForGae() &&
+        this.getGaeOperationMode(config.primaryBreaker) === 'AUTO'
+      ) {
+        this.startGaeAutomatically(config);
+      }
+    }, delay);
+
+    this.gaeStartTimers.set(key, timer);
+    this.gaeStartDeadlines.set(key, Date.now() + delay);
+
+    return true;
+  },
+
+  updateGaeAutomaticBlackout() {
+    const blackout = this.isBlackoutForGae();
+
+    for (const config of this.getAllGaeControlConfigs()) {
+      const automatic =
+        this.getGaeOperationMode(config.primaryBreaker) === 'AUTO';
+
+      if (!automatic) {
+        this.cancelGaeAutomaticStart(config.id);
+        continue;
+      }
+
+      if (blackout) {
+        this.scheduleGaeAutomaticStart(config);
+      } else {
+        this.cancelGaeAutomaticStart(config.id);
+        this.stopGaeAutomatically(config);
+      }
+    }
+
+    return blackout;
+  },
+
+  clearGaeEmergencySupplyFlags() {
+    for (const panel of Scenario01.pcaPanels ?? []) {
+      for (const load of panel.loads ?? []) {
+        load.gaeEmergencyEnergized = false;
+        load.gaeEmergencySource = null;
+        load.gaeEmergencyColor = null;
+      }
+    }
+
+    for (const panel of Scenario01.auxPanels ?? []) {
+      panel.gaeEmergencyEnergized = false;
+      panel.gaeEmergencySource = null;
+      panel.gaeEmergencyColor = null;
+    }
+  },
+
+  applyGaeEmergencySupplyOverrides() {
+    this.clearGaeEmergencySupplyFlags();
+
+    if (!this.isBlackoutForGae()) {
+      return false;
+    }
+
+    let suppliedAny = false;
+
+    for (const config of this.getAllGaeControlConfigs()) {
+      if (!this.isGaeBreakerClosed(config.primaryBreaker)) {
+        continue;
+      }
+
+      for (const breakerId of config.couplingBreakers ?? []) {
+        if (!this.isGaeBreakerClosed(breakerId)) {
+          continue;
+        }
+
+        const match = this.getGaeBreaker(breakerId);
+
+        if (match?.load) {
+          match.load.gaeEmergencyEnergized = true;
+          match.load.gaeEmergencySource = config.id;
+          match.load.gaeEmergencyColor = this.gaeEmergencyColor;
+
+          match.load.energized = true;
+          match.load.suppliedBy = config.id;
+          match.load.activeSupply = 'GAE';
+
+          suppliedAny = true;
+        }
+
+        /*
+         * No GD-3 o DJ 255 pertence ao próprio painel 8qV.
+         */
+        if (match?.kind === 'aux-extra' && match.panel) {
+          match.panel.gaeEmergencyEnergized = true;
+          match.panel.gaeEmergencySource = config.id;
+          match.panel.gaeEmergencyColor = this.gaeEmergencyColor;
+          match.panel.energized = true;
+          match.panel.suppliedBy = config.id;
+
+          suppliedAny = true;
+        }
+      }
+    }
+
+    return suppliedAny;
+  },
+
   isGaeBreakerClosed(breakerId) {
     const match = this.getGaeBreaker(breakerId);
 
@@ -4238,6 +4797,24 @@ export const Engine = {
       return false;
     }
 
+    const config = this.getGaeControlConfig(breakerId);
+    const operationMode = this.getGaeOperationMode(breakerId);
+
+    // Comando local de LIGA / DESLIGA somente em MANUAL.
+    if (config && operationMode !== 'MANUAL') {
+      this.showOperationMessage(
+        `COMANDO BLOQUEADO\n${config.label} está em AUTOMATICO. Selecione MANUAL para comandar o DJ ${breakerId}.`
+      );
+
+      EventLog.add(
+        `DJ ${breakerId}`,
+        `COMANDO BLOQUEADO - ${config.label} EM AUTOMATICO`,
+        'warning'
+      );
+
+      return false;
+    }
+
     const currentlyClosed = this.isGaeBreakerClosed(breakerId);
 
     const closing =
@@ -4247,11 +4824,61 @@ export const Engine = {
       return true;
     }
 
+    if (closing && !this.ensureBreakerInserted(breakerId, breakerId)) {
+      return false;
+    }
+
+    //==================================================
+    // BLOQUEIO ESPECIAL DO DJ 21103 - GAE PROV
+    //==================================================
+    // O acoplamento do GD PROV ao CCM-U01 somente pode ser fechado
+    // durante BLACKOUT, isto e, quando as tres UGs que alimentam o
+    // servico auxiliar normal estiverem simultaneamente indisponiveis.
+    //
+    // UG-01 -> perdida/parada
+    // UG-11 -> perdida/parada
+    // UG-12 -> perdida/parada
+    //
+    // A abertura do 21103 continua permitida a qualquer momento em MANUAL.
+    if (String(breakerId) === '21103' && closing) {
+      const operationalUnits =
+        this.operationalUnits ?? ['UG01', 'UG02', 'UG11', 'UG12'];
+
+      const availableSources = operationalUnits
+        .filter((unitId) => this.isUnitRunning(unitId))
+        .map((unitId) => unitId.replace('UG', 'UG-'));
+
+      const blackout = availableSources.length === 0;
+
+      if (!blackout) {
+        this.showOperationMessage(
+          `COMANDO BLOQUEADO\nO DJ 21103 do GD PROV somente pode ser ligado em BLACKOUT, com perda simultanea de todas as UGs operacionais.${
+            availableSources.length
+              ? `\nFonte(s) ainda disponivel(is): ${availableSources.join(
+                  ', '
+                )}.`
+              : ''
+          }`
+        );
+
+        EventLog.add(
+          'DJ 21103',
+          `FECHAMENTO BLOQUEADO - FONTE NORMAL DISPONIVEL${
+            availableSources.length ? ` (${availableSources.join(', ')})` : ''
+          }`,
+          'warning'
+        );
+
+        return false;
+      }
+    }
+
     if (match.kind === 'pca-switch') {
       match.target.closed = closing;
       match.target.state = closing
         ? Breaker.STATES.CLOSED
         : Breaker.STATES.OPEN_AUTO;
+      match.target.breakerState = match.target.state;
     } else if (
       match.kind === 'pca-generator' ||
       match.kind === 'aux-generator'
@@ -4260,6 +4887,7 @@ export const Engine = {
         ? Breaker.STATES.CLOSED
         : Breaker.STATES.OPEN_AUTO;
 
+      match.target.state = match.target.breakerState;
       match.target.closed = closing;
       match.target.energized = closing;
     } else {
@@ -4267,7 +4895,9 @@ export const Engine = {
         ? Breaker.STATES.CLOSED
         : Breaker.STATES.OPEN_AUTO;
 
+      match.target.breakerState = match.target.state;
       match.target.closed = closing;
+      match.target.energized = closing;
     }
 
     EventLog.add(
@@ -4276,11 +4906,15 @@ export const Engine = {
       closing ? 'info' : 'warning'
     );
 
+    this.propagateColors();
+
     this.notifyStateChange('gae-breaker-command', {
       breakerId: String(breakerId),
       closed: closing,
       panelId: match.panel?.id ?? null,
       loadId: match.load?.id ?? null,
+      gaeId: config?.id ?? null,
+      operationMode,
     });
 
     return true;
@@ -4291,6 +4925,348 @@ export const Engine = {
    */
   toggleAuxGeneratorBreaker(breakerId, desiredClosed = null) {
     return this.toggleGaeBreaker(breakerId, desiredClosed);
+  },
+
+  getUnitStartAuxiliaryRequirements(unitId) {
+    return this.unitStartAuxiliaryRequirements?.[String(unitId)] ?? [];
+  },
+
+  isPcaLoadEnergizedByPanelId(panelId) {
+    const config = this.getPcaLoadTransferConfigByPanelId(panelId);
+
+    if (!config) {
+      return false;
+    }
+
+    const load = this.getPcaLoad(config.groupId, config.loadId);
+
+    if (!load) {
+      return false;
+    }
+
+    /*
+     * gaeEmergencyEnergized é verificado explicitamente para que a
+     * condição de partida reconheça imediatamente a alimentação do GAE,
+     * mesmo antes de qualquer outra recomposição de fonte normal.
+     */
+    return load.energized === true || load.gaeEmergencyEnergized === true;
+  },
+
+  getMissingUnitStartAuxiliaryPanels(unitId) {
+    return this.getUnitStartAuxiliaryRequirements(unitId).filter(
+      (panelId) => !this.isPcaLoadEnergizedByPanelId(panelId)
+    );
+  },
+
+  canStartUnitByAuxiliarySupply(unitId, showMessage = true) {
+    const requiredPanels = this.getUnitStartAuxiliaryRequirements(unitId);
+
+    /*
+     * UGs sem requisito configurado continuam usando a lógica existente.
+     */
+    if (requiredPanels.length === 0) {
+      return true;
+    }
+
+    const missingPanels = this.getMissingUnitStartAuxiliaryPanels(unitId);
+
+    if (missingPanels.length === 0) {
+      return true;
+    }
+
+    const generator = this.getGenerator(unitId);
+    const unitLabel = generator?.label ?? String(unitId);
+
+    if (showMessage) {
+      this.showOperationMessage(
+        `PARTIDA BLOQUEADA\n${unitLabel} não pode ser ligada enquanto o(s) quadro(s) auxiliar(es) ${missingPanels.join(
+          ', '
+        )} estiver(em) SEM TENSÃO.\nEnergize o(s) CCM/CM necessário(s) antes de comandar a partida.`
+      );
+    }
+
+    EventLog.add(
+      unitLabel,
+      `PARTIDA BLOQUEADA - QUADRO AUXILIAR SEM TENSAO: ${missingPanels.join(
+        ', '
+      )}`,
+      'warning'
+    );
+
+    this.notifyStateChange('generator-start-blocked-auxiliary-supply', {
+      unitId: String(unitId),
+      requiredPanels: [...requiredPanels],
+      missingPanels: [...missingPanels],
+    });
+
+    return false;
+  },
+
+  //==================================================
+  // SIMULADOR UG - PARTIDA MANUAL
+  //==================================================
+
+  getUgManualStartStore() {
+    window.__ugManualStartStates = window.__ugManualStartStates ?? {};
+    return window.__ugManualStartStates;
+  },
+
+  getUgManualStartState(unitId) {
+    const id = String(unitId);
+    const store = this.getUgManualStartStore();
+
+    store[id] = store[id] ?? {
+      mode: 'AUTO',
+      auxiliariesChecked: false,
+      brakeReleased: false,
+      turbineAdmitted: false,
+      speedPercent: 0,
+      excitationOn: false,
+      voltagePercent: 0,
+      readyToRun: false,
+    };
+
+    return store[id];
+  },
+
+  resetUgManualStartState(unitId, keepMode = true) {
+    const current = this.getUgManualStartState(unitId);
+    const mode = keepMode ? current.mode : 'AUTO';
+
+    this.getUgManualStartStore()[String(unitId)] = {
+      mode,
+      auxiliariesChecked: false,
+      brakeReleased: false,
+      turbineAdmitted: false,
+      speedPercent: 0,
+      excitationOn: false,
+      voltagePercent: 0,
+      readyToRun: false,
+    };
+
+    this.notifyStateChange('ug-manual-start-reset', { unitId: String(unitId) });
+    return true;
+  },
+
+  setUgOperationMode(unitId, mode) {
+    const state = this.getUgManualStartState(unitId);
+    const normalized = String(mode).toUpperCase();
+
+    if (!['AUTO', 'MANUAL'].includes(normalized)) return false;
+
+    state.mode = normalized;
+
+    EventLog.add(
+      this.getGenerator(unitId)?.label ?? String(unitId),
+      `SIMULADOR UG COLOCADO EM ${normalized}`,
+      normalized === 'MANUAL' ? 'warning' : 'info'
+    );
+
+    this.notifyStateChange('ug-operation-mode-changed', {
+      unitId: String(unitId),
+      mode: normalized,
+    });
+
+    return true;
+  },
+
+  commandUgManualStart(unitId, command) {
+    const id = String(unitId);
+    const unit = this.getUnitState(id);
+    const generator = this.getGenerator(id);
+    const state = this.getUgManualStartState(id);
+    const label = generator?.label ?? id;
+
+    if (!unit || !generator) return false;
+
+    if (!this.isUnitAvailable(id)) {
+      this.showOperationMessage(`${label} indisponível para partida.`);
+      return false;
+    }
+
+    if (state.mode !== 'MANUAL') {
+      this.showOperationMessage(
+        `COMANDO BLOQUEADO\nColoque ${label} em MANUAL antes de executar a partida manual.`
+      );
+      return false;
+    }
+
+    const blocked = (message) => {
+      this.showOperationMessage(`PARTIDA MANUAL BLOQUEADA\n${message}`);
+      EventLog.add(label, `PARTIDA MANUAL BLOQUEADA - ${message}`, 'warning');
+      return false;
+    };
+
+    switch (String(command).toUpperCase()) {
+      case 'AUXILIAR':
+        if (!this.canStartUnitByAuxiliarySupply(id, true)) return false;
+        state.auxiliariesChecked = true;
+        EventLog.add(
+          label,
+          'PARTIDA MANUAL - SERVICOS AUXILIARES CONFIRMADOS',
+          'info'
+        );
+        break;
+
+      case 'FREIO':
+        if (!state.auxiliariesChecked) {
+          return blocked('Confirme primeiro os serviços auxiliares.');
+        }
+        state.brakeReleased = true;
+        EventLog.add(label, 'PARTIDA MANUAL - FREIO DESAPLICADO', 'info');
+        break;
+
+      case 'TURBINA':
+        if (!state.brakeReleased) {
+          return blocked('Desaplique primeiro o freio da unidade.');
+        }
+        state.turbineAdmitted = true;
+        state.speedPercent = Math.max(state.speedPercent, 15);
+        EventLog.add(
+          label,
+          'PARTIDA MANUAL - ADMISSAO DE AGUA / INICIO DE GIRO',
+          'info'
+        );
+        break;
+
+      case 'SPEED_30':
+      case 'SPEED_60':
+      case 'SPEED_90':
+      case 'SPEED_100': {
+        if (!state.turbineAdmitted) {
+          return blocked('Inicie primeiro o giro da turbina.');
+        }
+
+        const target = Number(String(command).split('_')[1]);
+        if (target > 30 && state.speedPercent < 30) {
+          return blocked('Eleve primeiro a rotação para 30%.');
+        }
+        if (target > 60 && state.speedPercent < 60) {
+          return blocked('Eleve primeiro a rotação para 60%.');
+        }
+        if (target > 90 && state.speedPercent < 90) {
+          return blocked('Eleve primeiro a rotação para 90%.');
+        }
+
+        state.speedPercent = target;
+        EventLog.add(label, `PARTIDA MANUAL - ROTACAO EM ${target}%`, 'info');
+        break;
+      }
+
+      case 'SPEED_UP':
+        if (!state.turbineAdmitted) {
+          return blocked('Inicie primeiro o giro da turbina.');
+        }
+        state.speedPercent = Math.min(100, (state.speedPercent || 0) + 5);
+        EventLog.add(
+          label,
+          `PARTIDA MANUAL - ROTACAO AUMENTADA PARA ${state.speedPercent}%`,
+          'info'
+        );
+        break;
+
+      case 'SPEED_DOWN':
+        if (!state.turbineAdmitted) {
+          return blocked('A turbina ainda não está em giro.');
+        }
+        state.speedPercent = Math.max(0, (state.speedPercent || 0) - 5);
+        EventLog.add(
+          label,
+          `PARTIDA MANUAL - ROTACAO REDUZIDA PARA ${state.speedPercent}%`,
+          'info'
+        );
+        break;
+
+      case 'VOLTAGE_UP':
+        if (!state.excitationOn) {
+          return blocked('Ligue primeiro a excitação.');
+        }
+        state.voltagePercent = Math.min(100, (state.voltagePercent || 0) + 5);
+        EventLog.add(
+          label,
+          `PARTIDA MANUAL - TENSAO AUMENTADA PARA ${state.voltagePercent}%`,
+          'info'
+        );
+        break;
+
+      case 'VOLTAGE_DOWN':
+        if (!state.excitationOn) {
+          return blocked('Ligue primeiro a excitação.');
+        }
+        state.voltagePercent = Math.max(0, (state.voltagePercent || 0) - 5);
+        EventLog.add(
+          label,
+          `PARTIDA MANUAL - TENSAO REDUZIDA PARA ${state.voltagePercent}%`,
+          'info'
+        );
+        break;
+
+      case 'EXCITACAO':
+        if (state.speedPercent < 90) {
+          return blocked(
+            'A rotação deve estar em pelo menos 90% para ligar a excitação.'
+          );
+        }
+        state.excitationOn = true;
+        state.voltagePercent = Math.max(state.voltagePercent || 0, 80);
+        EventLog.add(label, 'PARTIDA MANUAL - EXCITACAO LIGADA', 'info');
+        break;
+
+      case 'PRONTO':
+        if (state.speedPercent < 100) {
+          return blocked('Eleve a unidade até 100% da rotação.');
+        }
+        if (!state.excitationOn) {
+          return blocked('Ligue a excitação antes de concluir a partida.');
+        }
+        if ((state.voltagePercent || 0) < 100) {
+          return blocked(
+            'Ajuste a tensão do gerador para 100% usando o comando +.'
+          );
+        }
+        state.readyToRun = true;
+        EventLog.add(
+          label,
+          'PARTIDA MANUAL - UNIDADE PRONTA PARA OPERACAO',
+          'info'
+        );
+        break;
+
+      case 'LIGAR':
+        if (!state.readyToRun) {
+          return blocked('Conclua todas as etapas da partida manual.');
+        }
+
+        if (unit.running !== true) {
+          const ok = this.toggleGenerator(id);
+          if (!ok) return false;
+        }
+
+        state.speedPercent = 100;
+        state.excitationOn = true;
+        state.voltagePercent = 100;
+        EventLog.add(label, 'PARTIDA MANUAL CONCLUIDA', 'info');
+        break;
+
+      case 'ABORTAR':
+        if (unit.running === true) {
+          this.toggleGenerator(id);
+        }
+        this.resetUgManualStartState(id, true);
+        EventLog.add(label, 'SEQUENCIA DE PARTIDA MANUAL CANCELADA', 'warning');
+        break;
+
+      default:
+        return false;
+    }
+
+    this.notifyStateChange('ug-manual-start-command', {
+      unitId: id,
+      command: String(command).toUpperCase(),
+      state: { ...state },
+    });
+
+    return true;
   },
 
   toggleGenerator(unitId) {
@@ -4315,6 +5291,19 @@ export const Engine = {
         'warning'
       );
 
+      return false;
+    }
+
+    /*
+     * BLOQUEIO DE PARTIDA APÓS BLACKOUT / PERDA DOS SERVIÇOS AUXILIARES.
+     *
+     * A regra vale somente para LIGAR a unidade. A parada permanece sempre
+     * disponível. Cada UG é validada de forma independente pelo seu CCM/CM;
+     * portanto a falha de um GAE não libera indevidamente a UG associada.
+     */
+    const starting = unit.running !== true;
+
+    if (starting && !this.canStartUnitByAuxiliarySupply(unitId, true)) {
       return false;
     }
 
@@ -4366,7 +5355,120 @@ export const Engine = {
     return true;
   },
 
+  cancelBlackoutSimulation() {
+    if (Array.isArray(this.blackoutTimers)) {
+      this.blackoutTimers.forEach((timer) => {
+        clearTimeout(timer);
+      });
+    }
+
+    this.blackoutTimers = [];
+    this.blackoutSimulationRunning = false;
+
+    return true;
+  },
+
+  startBlackoutSimulation() {
+    /*
+     * BLACKOUT - PRIMEIRA VERSÃO
+     *
+     * Sequência solicitada:
+     *   t = 0 s  -> UG-01 OFF
+     *   t = 1 s  -> UG-11 OFF
+     *   t = 2 s  -> UG-12 OFF
+     *
+     * A UG-02 não participa desta sequência porque, no cenário atual,
+     * encontra-se em modernização e a lógica de blackout do simulador
+     * utiliza UG-01, UG-11 e UG-12 como fontes disponíveis.
+     *
+     * Cada desligamento usa toggleGenerator(), portanto preserva TODA a
+     * lógica já existente de perda de tensão, abertura dos DJs,
+     * transferência automática e partida dos GAEs.
+     */
+    if (this.blackoutSimulationRunning) {
+      this.showOperationMessage(
+        'BLACKOUT\nA simulação de blackout já está em andamento.'
+      );
+
+      return false;
+    }
+
+    const sequence = [...(this.operationalUnits ?? ['UG01', 'UG02', 'UG11', 'UG12'])];
+
+    const unitsToStop = sequence.filter((unitId) => {
+      const unit = this.getUnitState(unitId);
+
+      return unit && this.isUnitAvailable(unitId) && unit.running === true;
+    });
+
+    if (unitsToStop.length === 0) {
+      this.showOperationMessage(
+        'BLACKOUT\nAs UGs da sequência já estão desligadas ou indisponíveis.'
+      );
+
+      return false;
+    }
+
+    this.cancelBlackoutSimulation();
+    this.blackoutSimulationRunning = true;
+
+    EventLog.add(
+      'SISTEMA',
+      'SIMULAÇÃO DE BLACKOUT INICIADA - DESLIGAMENTO SEQUENCIAL DAS UGs',
+      'warning'
+    );
+
+    this.notifyStateChange('blackout-simulation-started', {
+      sequence: [...unitsToStop],
+      stepDelay: this.blackoutStepDelay,
+    });
+
+    unitsToStop.forEach((unitId, index) => {
+      const timer = setTimeout(() => {
+        const unit = this.getUnitState(unitId);
+
+        /*
+         * Verifica novamente antes do comando.
+         * Se o operador já desligou a UG durante a sequência,
+         * não fazemos toggle para evitar religá-la acidentalmente.
+         */
+        if (unit && this.isUnitAvailable(unitId) && unit.running === true) {
+          this.toggleGenerator(unitId);
+
+          EventLog.add(
+            'BLACKOUT',
+            `${unitId.replace('UG', 'UG-')} DESLIGADA - ETAPA ${index + 1}/${
+              unitsToStop.length
+            }`,
+            'warning'
+          );
+        }
+
+        if (index === unitsToStop.length - 1) {
+          this.blackoutTimers = [];
+          this.blackoutSimulationRunning = false;
+
+          EventLog.add(
+            'SISTEMA',
+            'BLACKOUT CONCLUÍDO - FONTES DAS UGs PERDIDAS',
+            'warning'
+          );
+
+          this.notifyStateChange('blackout-simulation-completed', {
+            sequence: [...unitsToStop],
+          });
+        }
+      }, index * this.blackoutStepDelay);
+
+      this.blackoutTimers.push(timer);
+    });
+
+    return true;
+  },
+
   restoreNormalState() {
+    this.cancelBlackoutSimulation();
+
     if (!this.normalScenarioState) {
       return false;
     }

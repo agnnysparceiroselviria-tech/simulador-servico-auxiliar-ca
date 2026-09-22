@@ -340,10 +340,18 @@ export class AuxDistributionDetailView {
 
     static sourceStatus() {
         return {
-            leftAvailable: this.panelData?.leftEnergized !== false,
-            rightAvailable: this.panelData?.rightEnergized !== false,
+            leftAvailable: this.panelData?.leftEnergized === true,
+            rightAvailable: this.panelData?.rightEnergized === true,
             leftColor: this.panelData?.colorLeft ?? "#3f7cff",
-            rightColor: this.panelData?.colorRight ?? "#35b95f"
+            rightColor: this.panelData?.colorRight ?? "#35b95f",
+            gaeEmergencyEnergized:
+                this.panelData?.gaeEmergencyEnergized === true,
+            gaeEmergencyColor:
+                this.panelData?.gaeEmergencyColor ??
+                Engine.gaeEmergencyColor ??
+                "#00B8D9",
+            gaeEmergencySource:
+                this.panelData?.gaeEmergencySource ?? null
         };
     }
 
@@ -353,6 +361,24 @@ export class AuxDistributionDetailView {
 
         const directLeft = source.leftAvailable && state.leftClosed;
         const directRight = source.rightAvailable && state.rightClosed;
+
+        /*
+         * O GAE alimenta o barramento do quadro por uma terceira entrada.
+         * Durante blackout as duas entradas normais podem estar sem tensão,
+         * mas o painel continua energizado se o Engine sinalizar o GAE ativo.
+         */
+        if (source.gaeEmergencyEnergized) {
+            return {
+                ...source,
+                directLeft,
+                directRight,
+                leftEnergized: true,
+                rightEnergized: true,
+                leftColor: source.gaeEmergencyColor,
+                rightColor: source.gaeEmergencyColor,
+                gaeFeeding: true
+            };
+        }
 
         const leftEnergized =
             directLeft ||
@@ -377,7 +403,8 @@ export class AuxDistributionDetailView {
             leftEnergized,
             rightEnergized,
             leftColor,
-            rightColor
+            rightColor,
+            gaeFeeding: false
         };
     }
 
@@ -514,7 +541,9 @@ export class AuxDistributionDetailView {
                             y: generatorInputY,
                             generator: definition.generator,
                             busX,
-                            busColor: topColor
+                            busColor: topColor,
+                            energized: electrical.gaeFeeding === true,
+                            emergencyColor: electrical.gaeEmergencyColor
                         })
                         : ""
                 }
@@ -599,10 +628,15 @@ export class AuxDistributionDetailView {
         const lowerEnd =
             lowerStart + Math.max(lowerRows.length, 1) * rowHeight;
         const height = lowerEnd + 82;
-        const busEnergized = electrical.directLeft || electrical.directRight;
-        const busColor = electrical.directLeft
-            ? electrical.leftColor
-            : (electrical.directRight ? electrical.rightColor : "#9baab3");
+        const busEnergized =
+            electrical.gaeFeeding === true ||
+            electrical.directLeft ||
+            electrical.directRight;
+        const busColor = electrical.gaeFeeding === true
+            ? electrical.gaeEmergencyColor
+            : electrical.directLeft
+                ? electrical.leftColor
+                : (electrical.directRight ? electrical.rightColor : "#9baab3");
         const reserveSourceColor = electrical.rightAvailable
             ? this.panelData?.colorRight ?? "#35b95f"
             : "#9baab3";
@@ -1166,31 +1200,55 @@ export class AuxDistributionDetailView {
         y,
         generator,
         busX,
-        busColor
+        busColor,
+        energized = false,
+        emergencyColor = "#00B8D9"
     }) {
         const standbyColor = "#d98300";
+        const activeColor = energized ? emergencyColor : standbyColor;
+        const connectionColor = energized ? emergencyColor : "#9baab3";
+        const generatorFill = energized ? emergencyColor : "#ffffff";
+        const generatorText = energized ? "#ffffff" : "#173248";
+        const status = energized
+            ? "FONTE DE EMERGÊNCIA EM OPERAÇÃO"
+            : `FONTE DE EMERGÊNCIA EM ESPERA • ${this.formatDelay(generator.delayMs)}`;
+
+        const breakerMarkup = (x, label) => energized
+            ? `
+                <g>
+                    <rect x="${x - 17}" y="${y - 17}" width="34" height="34"
+                          fill="#d60000" stroke="#d60000" stroke-width="2"/>
+                    <text x="${x}" y="${y - 28}" text-anchor="middle"
+                          fill="#173248" font-size="14" font-weight="900">
+                        ${this.escape(label)}
+                    </text>
+                    <text x="${x}" y="${y + 34}" text-anchor="middle"
+                          fill="#d60000" font-size="10" font-weight="900">LIGADO</text>
+                </g>
+            `
+            : this.renderOpenStaticBreaker(x, y, label);
 
         return `
             <g>
                 <line x1="76" y1="${y}" x2="${busX}" y2="${y}"
-                      stroke="#9baab3" stroke-width="3"/>
+                      stroke="${connectionColor}" stroke-width="3"/>
                 <path d="M 88 ${y} L 76 ${y - 6} L 76 ${y + 6} Z"
-                      fill="${standbyColor}"/>
-                <circle cx="210" cy="${y}" r="28" fill="#ffffff"
-                        stroke="${standbyColor}" stroke-width="3"/>
+                      fill="${activeColor}"/>
+                <circle cx="210" cy="${y}" r="28" fill="${generatorFill}"
+                        stroke="${activeColor}" stroke-width="3"/>
                 <text x="210" y="${y + 6}" text-anchor="middle"
-                      fill="#173248" font-size="17" font-weight="900">
+                      fill="${generatorText}" font-size="17" font-weight="900">
                     ${this.escape(generator.id)}
                 </text>
-                ${this.renderOpenStaticBreaker(300, y, generator.firstBreaker)}
-                ${this.renderOpenStaticBreaker(470, y, generator.incomingBreaker)}
+                ${breakerMarkup(300, generator.firstBreaker)}
+                ${breakerMarkup(470, generator.incomingBreaker)}
                 <line x1="498" y1="${y}" x2="${busX}" y2="${y}"
-                      stroke="#9baab3" stroke-width="3"/>
+                      stroke="${connectionColor}" stroke-width="3"/>
                 <text x="560" y="${y + 35}" text-anchor="middle"
-                      fill="${standbyColor}" font-size="13" font-weight="900">
-                    FONTE DE EMERG\u00caNCIA EM ESPERA \u2022 ${this.formatDelay(generator.delayMs)}
+                      fill="${activeColor}" font-size="13" font-weight="900">
+                    ${status}
                 </text>
-                <circle cx="${busX}" cy="${y}" r="4" fill="${busColor}"/>
+                <circle cx="${busX}" cy="${y}" r="4" fill="${energized ? emergencyColor : busColor}"/>
             </g>
         `;
     }
@@ -1645,6 +1703,10 @@ export class AuxDistributionDetailView {
     }
 
     static getSupplyText(electrical) {
+        if (electrical?.gaeFeeding === true) {
+            return "ENERGIZADO PELO GAE";
+        }
+
         if (this.definition?.layout === "single-bus-dual-incoming") {
             if (electrical.directLeft) {
                 return "ENERGIZADO PELA ENTRADA NORMAL";

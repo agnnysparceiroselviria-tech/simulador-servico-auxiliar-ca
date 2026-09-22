@@ -1,11 +1,29 @@
+// APP.JS - VERSAO 2 - CAIXA DE SELECAO DE CENARIOS
+// Se esta mensagem aparece na primeira linha, o arquivo correto foi copiado.
+
 import { Renderer } from "./Renderer.js";
+import { ScenarioNormal } from "./ScenarioNormal.js";
 import { Scenario01 } from "./Scenario01.js";
+import { Scenario02 } from "./Scenario02.js";
+import { loadActiveScenario } from "./ScenarioActive.js";
 import { EventLog } from "./EventLog.js";
+import { EventPrint } from "./EventPrint.js";
 import { Engine } from "./Engine.js";
+import { UGSimulator } from "./UGSimulator.js";
 
 export const App = {
 
     clockTimer: null,
+
+    selectedScenario: "normal",
+
+    scenarioDescriptions: {
+        normal: "CONFIGURAÇÃO NORMAL DO SISTEMA",
+        scenario1: "FONTE DA UG-01 INDISPONÍVEL DEVIDO À MODERNIZAÇÃO",
+        scenario2: "FONTE DA UG-02 INDISPONÍVEL DEVIDO À MODERNIZAÇÃO",
+        scenario3: "CENÁRIO 3 — AGUARDANDO CONFIGURAÇÃO",
+        scenario4: "CENÁRIO 4 — AGUARDANDO CONFIGURAÇÃO"
+    },
 
     sidePanelFitTimer: null,
 
@@ -79,6 +97,25 @@ export const App = {
                         </button>
 
                         <button
+                            id="openUGSimulator"
+                            class="controlButton"
+                            type="button"
+                            title="Abrir simulador operacional da UG-01"
+                        >
+                            SIMULADOR UG
+                        </button>
+
+                        <button
+                            id="blackoutMode"
+                            class="controlButton"
+                            type="button"
+                            title="Simular blackout com desligamento sequencial das UGs"
+                            aria-label="Simular blackout"
+                        >
+                            BLACKOUT
+                        </button>
+
+                        <button
                             id="normalMode"
                             class="controlButton"
                             type="button"
@@ -121,9 +158,31 @@ export const App = {
                                 Cen&aacute;rio
                             </span>
 
-                            <strong>
-                                ${Scenario01.name}
-                            </strong>
+                            <select
+                                id="scenarioSelect"
+                                class="scenarioSelect"
+                                aria-label="Selecionar cenário de operação"
+                                title="Selecionar cenário de operação"
+                                style="
+                                    width: 100%;
+                                    margin-top: 5px;
+                                    padding: 8px 30px 8px 9px;
+                                    color: #ffffff;
+                                    background: #29465f;
+                                    border: 1px solid #4f7592;
+                                    border-radius: 5px;
+                                    font: inherit;
+                                    font-weight: 700;
+                                    cursor: pointer;
+                                    outline: none;
+                                "
+                            >
+                                <option value="normal" selected>Normal</option>
+                                <option value="scenario1">Cenário 1</option>
+                                <option value="scenario2">Cenário 2</option>
+                                <option value="scenario3">Cenário 3</option>
+                                <option value="scenario4">Cenário 4</option>
+                            </select>
 
                         </div>
 
@@ -247,12 +306,26 @@ export const App = {
                                     EVENTOS DO SISTEMA
                                 </span>
 
-                                <span
-                                    id="eventLogCounter"
-                                    class="eventLogCounter"
-                                >
-                                    0 EVENTOS
-                                </span>
+                                <div class="eventLogHeaderActions">
+
+                                    <button
+                                        id="printEventLog"
+                                        class="eventLogPrintButton"
+                                        type="button"
+                                        title="Imprimir lista de eventos"
+                                        aria-label="Imprimir lista de eventos"
+                                    >
+                                        IMPRIMIR
+                                    </button>
+
+                                    <span
+                                        id="eventLogCounter"
+                                        class="eventLogCounter"
+                                    >
+                                        0 EVENTOS
+                                    </span>
+
+                                </div>
 
                             </div>
 
@@ -299,8 +372,8 @@ export const App = {
 
                             <span>UG-02</span>
 
-                            <strong class="statusMaintenance">
-                                MODERNIZA&Ccedil;&Atilde;O
+                            <strong class="statusAvailable">
+                                DISPON&Iacute;VEL
                             </strong>
 
                         </div>
@@ -385,16 +458,16 @@ export const App = {
 
                     <div class="statusbarScenario">
 
-                        <strong>
-                            ${Scenario01.name}
+                        <strong id="statusbarScenarioName">
+                            NORMAL
                         </strong>
 
                         <span class="statusbarSeparator">
                             |
                         </span>
 
-                        <span>
-                            FONTE DA UG-02 INDISPON&Iacute;VEL DEVIDO &Agrave; MODERNIZA&Ccedil;&Atilde;O
+                        <span id="statusbarScenarioDescription">
+                            CONFIGURA&Ccedil;&Atilde;O NORMAL DO SISTEMA
                         </span>
 
                     </div>
@@ -417,23 +490,47 @@ export const App = {
             "eventLogList"
         );
 
-        /*
-         * O Engine precisa montar e capturar a configuracao normal antes do
-         * primeiro desenho. Assim os DJs 107 a 112 ja aparecem fechados e
-         * vermelhos quando o simulador abre.
-         */
+        loadActiveScenario(ScenarioNormal);
+
+        Renderer.initialize(
+            "svgDiagram"
+        );
+
         Engine.initialize({
 
-            transferDelay: 1300,
+            transferDelay: 3000,
 
             onStateChange: () => {
                 Renderer.render();
             }
         });
 
-        Renderer.initialize(
-            "svgDiagram"
-        );
+        /*
+         * IMPORTANTE:
+         * O Renderer faz o primeiro desenho antes do Engine terminar
+         * de aplicar as transferências automáticas dos quadros auxiliares.
+         *
+         * No CMCS, por exemplo, os DJs 256/257 partem com estado base
+         * "openAuto". Durante Engine.initialize(), propagateColors()
+         * identifica as fontes 7 e 33 energizadas e fecha a fonte normal.
+         *
+         * Este render adicional garante que o estado calculado pelo Engine
+         * apareça imediatamente na abertura do simulador, sem precisar
+         * clicar ou trocar de cenário.
+         */
+        Renderer.render();
+
+        UGSimulator.initialize();
+
+        // Abertura garantida da primeira tela do modulo UG.
+        // Mantemos este botao independente do SVG para nao depender
+        // de eventos de clique/zoom/camadas do diagrama principal.
+        const openUGSimulatorButton = document.getElementById("openUGSimulator");
+        if (openUGSimulatorButton) {
+            openUGSimulatorButton.addEventListener("click", () => {
+                UGSimulator.open("UG01");
+            });
+        }
 
         this.initializeEventLogResize();
 
@@ -514,8 +611,37 @@ export const App = {
         );
 
         this.bindButton(
+            "printEventLog",
+            () => {
+                EventPrint.open({
+                    scenarioName:
+                        document.getElementById("statusbarScenarioName")
+                            ?.textContent?.trim() || "NORMAL",
+
+                    scenarioDescription:
+                        document.getElementById("statusbarScenarioDescription")
+                            ?.textContent?.trim() || ""
+                });
+            }
+        );
+
+        this.bindButton(
+            "blackoutMode",
+            () => Engine.startBlackoutSimulation()
+        );
+
+        this.bindButton(
             "normalMode",
-            () => Engine.restoreNormalState()
+            () => {
+                const scenarioSelect =
+                    document.getElementById("scenarioSelect");
+
+                if (scenarioSelect) {
+                    scenarioSelect.value = "normal";
+                }
+
+                this.selectScenario("normal");
+            }
         );
 
         this.bindButton(
@@ -547,6 +673,75 @@ export const App = {
             "focusAuxPanels",
             () => navigation.focusAuxPanels()
         );
+
+        const scenarioSelect =
+            document.getElementById("scenarioSelect");
+
+        if (scenarioSelect) {
+
+            scenarioSelect.value =
+                this.selectedScenario;
+
+            scenarioSelect.addEventListener(
+                "change",
+                event => this.selectScenario(event.target.value)
+            );
+        }
+    },
+
+    //==================================================
+    // SELECAO DE CENARIO
+    // As logicas eletricas serao vinculadas posteriormente.
+    //==================================================
+
+    selectScenario(scenarioId) {
+
+        const scenarioNames = {
+            normal: "NORMAL",
+            scenario1: "CENÁRIO 1",
+            scenario2: "CENÁRIO 2",
+            scenario3: "CENÁRIO 3",
+            scenario4: "CENÁRIO 4"
+        };
+
+        if (!scenarioNames[scenarioId]) {
+            return;
+        }
+
+        const scenarios = {
+            normal: ScenarioNormal,
+            scenario1: Scenario01,
+            scenario2: Scenario02
+        };
+
+        const scenario =
+            scenarios[scenarioId];
+
+        // Cenários 3 e 4 ainda estão reservados.
+        // Não carregamos outro cenário por engano enquanto
+        // eles não tiverem arquivos próprios.
+        if (!scenario) {
+            return;
+        }
+
+        Engine.loadScenario(scenario);
+
+        this.selectedScenario = scenarioId;
+
+        const statusbarName =
+            document.getElementById("statusbarScenarioName");
+
+        const statusbarDescription =
+            document.getElementById("statusbarScenarioDescription");
+
+        if (statusbarName) {
+            statusbarName.textContent = scenarioNames[scenarioId];
+        }
+
+        if (statusbarDescription) {
+            statusbarDescription.textContent =
+                this.scenarioDescriptions[scenarioId] || "";
+        }
     },
 
     //==================================================
